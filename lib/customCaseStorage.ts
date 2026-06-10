@@ -21,6 +21,14 @@ export function saveCustomReport(report: any) {
       data[caseId] = report;
       localStorage.setItem(key, JSON.stringify(data));
       console.log("CUSTOM STORAGE save report", caseId, report.recommendation?.status || report.recommendation);
+      
+      const summary = buildWorkspaceCaseFromReport(report);
+      saveWorkspaceCase(summary);
+      
+      if (summary.recommendation.status === "Humanitarian Review Required") {
+        const route = report.route || report.outcome || summary.recommendation.status;
+        console.log("WORKSPACE SAVE humanitarian custom case", caseId, route);
+      }
     }
   } catch (e) {
     console.error("Failed to save custom report", e);
@@ -55,15 +63,35 @@ export function getCustomReportById(caseId: string): any | null {
 }
 
 export function buildWorkspaceCaseFromReport(report: any) {
-  return {
+  const summary = {
     caseData: report.caseData || report,
-    recommendation: report.recommendation,
+    recommendation: { ...(report.recommendation || {}) },
     reasonCodes: report.reasonCodes || [],
     caseClassification: report.caseClassification || { caseCategory: "Normal" },
     fullReport: report,
     createdAt: report.createdAt || new Date().toISOString(),
     source: "CUSTOM"
   };
+
+  const status = report.recommendation?.status || "";
+  const route = report.route || report.outcome || "";
+  const category = report.caseClassification?.caseCategory || "";
+  const resPath = report.recommendation?.resolutionPath || "";
+
+  const isHumanitarian = 
+    status.includes("Humanitarian Review Required") ||
+    route.includes("Humanitarian Review Required") ||
+    category.includes("Humanitarian") ||
+    resPath.includes("Financial Stress Review") ||
+    resPath.includes("Officer / Specialist Review");
+
+  if (isHumanitarian) {
+    summary.recommendation.status = "Humanitarian Review Required";
+    summary.recommendation.priorityReason = "Supporting evidence received; human review required";
+    summary.recommendation.nextBestAction = "Assign to specialist/human officer for review";
+  }
+
+  return summary;
 }
 
 export function saveWorkspaceCase(summary: any) {
