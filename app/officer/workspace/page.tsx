@@ -329,8 +329,18 @@ export default function OfficerWorkspace() {
         // Add existing workspace cases
         sakanCases.forEach(sc => {
            if (sc.caseData?.caseId) {
-               // Repair old wrongly saved humanitarian cases
-               if (sc.recommendation?.status === "Humanitarian Review Required" || sc.caseClassification?.caseCategory === "Humanitarian") {
+               // Repair old wrongly saved humanitarian cases using source data
+               const circ = (sc.caseData?.supportingCircumstance || "").toLowerCase().trim();
+               const hasCirc = circ && !["", "none", "no", "n/a", "null", "undefined"].includes(circ);
+               const evidenceUploaded = 
+                 sc.caseData?.supportingEvidenceUploaded || 
+                 sc.caseData?.supportingEvidenceAttached || 
+                 sc.caseData?.evidenceUploaded || 
+                 sc.caseData?.hardshipEvidenceUploaded || 
+                 !!(sc.caseData?.supportingEvidenceFile) || 
+                 ["CASE-C", "CASE-E"].includes(sc.caseData?.caseId);
+                 
+               if (hasCirc && evidenceUploaded) {
                  sc.workspaceBucket = "requiresOfficerAction";
                  sc.section = "requiresOfficerAction";
                  sc.group = "requiresOfficerAction";
