@@ -89,13 +89,32 @@ export function buildWorkspaceCaseFromReport(report: any) {
     resPath.includes("Officer / Specialist Review") ||
     (report.reasonCodes || []).some((rc: any) => rc?.code === "HUMANITARIAN_REVIEW" || rc === "HUMANITARIAN_REVIEW");
 
-  console.log("HUMANITARIAN DETECTED FOR WORKSPACE", report.caseData?.caseId || report.caseCode, isHumanitarian);
+  const hasEvidence = !!(report.caseData?.supportingEvidenceFile) || ["CASE-C", "CASE-E"].includes(report.caseData?.caseId);
+  const isMissingEvidence = isHumanitarian && !hasEvidence;
+
+  console.log("WORKSPACE MAP humanitarian detected", report.caseData?.caseId || report.caseCode, isHumanitarian);
 
   if (isHumanitarian) {
-    summary.recommendation.status = "Humanitarian Review Required";
-    summary.recommendation.priority = summary.recommendation.priority || "Medium";
-    summary.recommendation.priorityReason = "Supporting evidence received; humanitarian officer review required.";
-    summary.recommendation.nextBestAction = "Assign to specialist or human officer for humanitarian review.";
+    if (isMissingEvidence) {
+      summary.recommendation.status = "Applicant Action Required";
+      summary.caseClassification = summary.caseClassification || {};
+      summary.caseClassification.caseCategory = "Supporting Evidence Required";
+      summary.recommendation.priority = summary.recommendation.priority || "Medium";
+      summary.recommendation.priorityReason = "Missing supporting evidence for humanitarian request.";
+      summary.recommendation.nextBestAction = "Wait for beneficiary to upload missing evidence.";
+      console.log("WORKSPACE MAP bucket", report.caseData?.caseId || report.caseCode, "beneficiary_action");
+      console.log("WORKSPACE MAP recommendation", report.caseData?.caseId || report.caseCode, summary.recommendation.status);
+    } else {
+      summary.recommendation.status = "Humanitarian Review Required";
+      summary.recommendation.resolutionPath = "Financial Stress Review";
+      summary.caseClassification = summary.caseClassification || {};
+      summary.caseClassification.caseCategory = "Humanitarian";
+      summary.recommendation.priority = summary.recommendation.priority || "Medium";
+      summary.recommendation.priorityReason = "Supporting evidence received; humanitarian officer review required.";
+      summary.recommendation.nextBestAction = "Assign to specialist or human officer for humanitarian review.";
+      console.log("WORKSPACE MAP bucket", report.caseData?.caseId || report.caseCode, "requiresOfficerAction");
+      console.log("WORKSPACE MAP recommendation", report.caseData?.caseId || report.caseCode, summary.recommendation.status);
+    }
   }
 
   return summary;
