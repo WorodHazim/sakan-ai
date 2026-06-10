@@ -7,7 +7,6 @@ import { runDecisionAgent } from "@/lib/agent-rules";
 import { hasHumanitarianCircumstance } from "@/lib/utils";
 import { getKeyDecisionFactors } from "@/lib/getKeyDecisionFactors";
 import { NO_AUTO_APPROVAL_NOTICE } from "@/lib/governanceAudit";
-import { saveWorkspaceCase, getCustomReport } from "@/lib/workspace-storage";
 import { useDemo } from "@/lib/demo-context";
 import {
   AlertTriangle,
@@ -129,7 +128,6 @@ function ApplyResultContent() {
       setCaseData(rawDemo);
       setReport(runDecisionAgent(rawDemo));
     } else {
-      const storedReport = getCustomReport(caseId);
       const storedCase = localStorage.getItem(`customCase_${caseId}`);
       let parsedCaseData = null;
 
@@ -137,41 +135,10 @@ function ApplyResultContent() {
         try {
           parsedCaseData = JSON.parse(storedCase);
           setCaseData(parsedCaseData);
+          setReport(runDecisionAgent(parsedCaseData));
         } catch (e) {
           console.warn("Failed parsing custom case", e);
         }
-      }
-
-      if (storedReport) {
-        setReport(storedReport);
-        console.log("PERSISTENCE LOAD custom report", caseId, true);
-        
-        // Also ensure it's in workspace cases
-        if (parsedCaseData) {
-          saveWorkspaceCase({
-            caseData: parsedCaseData,
-            recommendation: storedReport.recommendation,
-            reasonCodes: storedReport.reasonCodes,
-            caseClassification: storedReport.caseClassification,
-            fullReport: storedReport,
-            createdAt: new Date().toISOString(),
-            source: "CUSTOM",
-          });
-        }
-      } else if (parsedCaseData) {
-        // Fallback: Recalculate
-        const rpt = runDecisionAgent(parsedCaseData);
-        setReport(rpt);
-        
-        saveWorkspaceCase({
-          caseData: parsedCaseData,
-          recommendation: rpt.recommendation,
-          reasonCodes: rpt.reasonCodes,
-          caseClassification: rpt.caseClassification,
-          fullReport: rpt,
-          createdAt: new Date().toISOString(),
-          source: "CUSTOM",
-        });
       }
     }
   }, [caseId]);

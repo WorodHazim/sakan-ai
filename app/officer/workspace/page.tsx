@@ -316,21 +316,66 @@ export default function OfficerWorkspace() {
   const [cases, setCases] = useState<any[]>([]);
 
   useEffect(() => {
-    const customCases = getWorkspaceCases();
-    // Sort custom cases newest first
-    customCases.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    
-    // Merge with initialCases avoiding duplicates
-    const customCaseIds = new Set(customCases.map(c => c.caseData.caseId));
-    const merged = [
-      ...customCases,
-      ...initialCases.filter(c => !customCaseIds.has(c.caseData.caseId))
-    ];
-    if (process.env.NODE_ENV === "development") {
-      console.log("merged workspace cases count", merged.length);
-      console.log("PERSISTENCE DO NOT CLEAR custom storage keys");
+    let isMounted = true;
+    async function loadCases() {
+      try {
+        const { getCases } = await import("@/lib/services/caseService");
+        const sakanCases = await getCases();
+        if (!isMounted) return;
+
+        const mapped = sakanCases.map(sc => {
+          let caseData: any = MOCK_CASES[sc.caseCode];
+          if (!caseData && typeof window !== 'undefined') {
+            try {
+              const stored = localStorage.getItem(`customCase_${sc.caseCode}`);
+              if (stored) caseData = JSON.parse(stored);
+            } catch(e) {}
+          }
+          if (!caseData) {
+            caseData = {
+              caseId: sc.caseCode,
+              beneficiaryName: sc.beneficiaryName,
+              emiratesId: sc.emiratesId,
+              beneficiaryId: sc.beneficiaryId,
+              loanId: sc.loanId,
+              monthlyIncome: sc.monthlyIncome || 0,
+              financialObligations: sc.financialObligations || 0,
+              familyMembers: sc.familyMembers || 1,
+              currentInstallment: sc.currentInstallment || 0,
+              arrearsAmount: sc.arrearsAmount || 0,
+              unpaidInstallments: sc.unpaidInstallments || 0,
+              remainingLoanBalance: sc.remainingBalance || 0,
+              remainingRepaymentMonths: sc.remainingRepaymentMonths || 0,
+              activeRequest: !!sc.activeRequest,
+              paymentHistory: sc.paymentHistory || "Custom Case",
+              supportingCircumstance: sc.supportingCircumstance,
+            };
+          }
+          
+          const report = runDecisionAgent(caseData);
+          return {
+            caseData,
+            recommendation: report.recommendation,
+            reasonCodes: report.reasonCodes,
+            caseClassification: report.caseClassification,
+            createdAt: sc.createdAt || new Date().toISOString(),
+          };
+        });
+
+        // sort newest first
+        mapped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        if (process.env.NODE_ENV === "development") {
+          console.log("merged workspace cases count", mapped.length);
+          console.log("PERSISTENCE DO NOT CLEAR custom storage keys");
+        }
+        setCases(mapped);
+      } catch (err) {
+        console.error("Failed to load workspace cases", err);
+      }
     }
-    setCases(merged);
+    loadCases();
+    return () => { isMounted = false; };
   }, []);
 
   const officerActionCases = cases.filter(c =>

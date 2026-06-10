@@ -19,7 +19,7 @@ import {
   mergeWithOfficerLogs,
 } from "@/lib/governanceAudit";
 import { useDemo } from "@/lib/demo-context";
-import { getWorkspaceCases, getCustomReport } from "@/lib/workspace-storage";
+import { CaseData } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   ArrowLeft,
@@ -546,20 +546,11 @@ export default function DecisionReportPage({
       return;
     }
 
-    console.log("[Report Restore] started", { caseId });
-
-    // Safety timeout: if restore hasn't finished in 8s, force it done
-    const timeout = setTimeout(() => {
-      console.warn("[Report Restore] timeout reached — forcing restoreAttempted", { caseId });
-      setRestoreAttempted(true);
-    }, 8000);
-
     const finish = () => {
-      clearTimeout(timeout);
       setRestoreAttempted(true);
     };
 
-    // Already in MOCK_CASES (e.g. navigated from same session)
+    // 1. Try MOCK_CASES
     if (MOCK_CASES[caseId]) {
       console.log("[Report Restore] found in MOCK_CASES");
       setRestoredCaseData(MOCK_CASES[caseId]);
@@ -567,37 +558,7 @@ export default function DecisionReportPage({
       return;
     }
 
-    // 0. Try sakan_custom_reports first
-    if (typeof window !== "undefined") {
-      const customReport = getCustomReport(caseId);
-      if (customReport) {
-        console.log("report: custom case found in sakan_custom_reports");
-        
-        // We need caseData from workspaceCases or parse it from customReport if it has it
-        const workspaceCases = getWorkspaceCases();
-        const wsCase = workspaceCases.find(c => c.caseData.caseId === caseId);
-        
-        if (wsCase) {
-          setRestoredCaseData(wsCase.caseData);
-        } else {
-          // If for some reason it's not in workspace array, fallback to raw localStorage
-          const raw = localStorage.getItem(`customCase_${caseId}`);
-          if (raw) {
-            try {
-              setRestoredCaseData(JSON.parse(raw));
-            } catch (e) {
-              console.warn("report: failed to parse customCase data", e);
-            }
-          }
-        }
-        
-        setRestoredReportData(customReport);
-        finish();
-        return;
-      }
-    }
-
-    // 1. Try raw customCase fallback and Supabase
+    // 2. Try localStorage customCase_[caseId]
     let foundInLocalStorage = false;
     if (typeof window !== "undefined") {
       try {
@@ -644,7 +605,7 @@ export default function DecisionReportPage({
       }
     }
 
-    // 2. Try Supabase as durable fallback
+    // 3. Try Supabase as durable fallback
     if (!foundInLocalStorage && isSupabaseConfigured && supabase) {
       console.log("[Report Restore] trying Supabase");
       const client = supabase;
@@ -711,8 +672,6 @@ export default function DecisionReportPage({
       console.log("[Report Restore] no source available", { foundInLocalStorage, supabaseConfigured: isSupabaseConfigured });
       finish();
     }
-
-    return () => clearTimeout(timeout);
   }, [caseId]);
 
   // Resolve case data: MOCK_CASES for fixed cases, restored data for custom

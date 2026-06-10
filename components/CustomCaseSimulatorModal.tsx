@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useDemo } from "@/lib/demo-context";
 import { saveCustomCase, addAgentTrace } from "@/lib/services/caseService";
 import { runDecisionAgent } from "@/lib/agent-rules";
-import { saveWorkspaceCase } from "@/lib/workspace-storage";
 import { MOCK_CASES } from "@/lib/mock-data";
 
 const T = {
@@ -389,16 +388,6 @@ export function CustomCaseSimulatorModal({ isOpen, onClose, onCaseGenerated }: C
 
       MOCK_CASES[newCaseId] = newMockData as any;
       const report = runDecisionAgent(newMockData as any);
-      
-      saveWorkspaceCase({
-        caseData: newMockData as any,
-        recommendation: report.recommendation,
-        reasonCodes: report.reasonCodes,
-        caseClassification: report.caseClassification,
-        fullReport: report,
-        createdAt: new Date().toISOString(),
-        source: "CUSTOM",
-      });
 
       const newCaseCard = {
         caseId: newCaseId,
