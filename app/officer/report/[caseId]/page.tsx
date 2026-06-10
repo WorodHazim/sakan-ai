@@ -19,7 +19,7 @@ import {
   mergeWithOfficerLogs,
 } from "@/lib/governanceAudit";
 import { useDemo } from "@/lib/demo-context";
-import { getWorkspaceCases } from "@/lib/workspace-storage";
+import { getWorkspaceCases, getCustomReport } from "@/lib/workspace-storage";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   ArrowLeft,
@@ -567,29 +567,37 @@ export default function DecisionReportPage({
       return;
     }
 
-    // 0. Try sakan_workspace_cases first
+    // 0. Try sakan_custom_reports first
     if (typeof window !== "undefined") {
-      const workspaceCases = getWorkspaceCases();
-      const wsCase = workspaceCases.find(c => c.caseData.caseId === caseId);
-      if (wsCase) {
-        console.log("report: loading custom case from localStorage");
-        console.log("report: custom case found");
-        setRestoredCaseData(wsCase.caseData);
-        if (wsCase.fullReport) {
-          setRestoredReportData(wsCase.fullReport);
+      const customReport = getCustomReport(caseId);
+      if (customReport) {
+        console.log("report: custom case found in sakan_custom_reports");
+        
+        // We need caseData from workspaceCases or parse it from customReport if it has it
+        const workspaceCases = getWorkspaceCases();
+        const wsCase = workspaceCases.find(c => c.caseData.caseId === caseId);
+        
+        if (wsCase) {
+          setRestoredCaseData(wsCase.caseData);
+        } else {
+          // If for some reason it's not in workspace array, fallback to raw localStorage
+          const raw = localStorage.getItem(`customCase_${caseId}`);
+          if (raw) {
+            try {
+              setRestoredCaseData(JSON.parse(raw));
+            } catch (e) {
+              console.warn("report: failed to parse customCase data", e);
+            }
+          }
         }
-        finish();
-        return;
-      } else {
-        console.log("report: custom case missing, showing safe missing state");
-        // User instruction: If the custom case data does NOT exist, do NOT show a fake fallback.
-        // We will just finish without setting anything, which triggers the safe "not found" state.
+        
+        setRestoredReportData(customReport);
         finish();
         return;
       }
     }
 
-    // 1. Try localStorage
+    // 1. Try raw customCase fallback and Supabase
     let foundInLocalStorage = false;
     if (typeof window !== "undefined") {
       try {

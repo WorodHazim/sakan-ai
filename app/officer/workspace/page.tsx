@@ -327,7 +327,7 @@ export default function OfficerWorkspace() {
       ...initialCases.filter(c => !customCaseIds.has(c.caseData.caseId))
     ];
     if (process.env.NODE_ENV === "development") {
-      console.log("loaded custom workspace cases count", customCases.length);
+      console.log("PERSISTENCE: loaded workspace cases", customCases.length);
       console.log("merged workspace cases count", merged.length);
     }
     setCases(merged);
