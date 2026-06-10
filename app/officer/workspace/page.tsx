@@ -329,6 +329,12 @@ export default function OfficerWorkspace() {
         // Add existing workspace cases
         sakanCases.forEach(sc => {
            if (sc.caseData?.caseId) {
+               // Repair old wrongly saved humanitarian cases
+               if (sc.recommendation?.status === "Humanitarian Review Required" || sc.caseClassification?.caseCategory === "Humanitarian") {
+                 sc.workspaceBucket = "requiresOfficerAction";
+                 sc.section = "requiresOfficerAction";
+                 sc.group = "requiresOfficerAction";
+               }
                customMap.set(sc.caseData.caseId, sc);
            }
         });
@@ -364,15 +370,11 @@ export default function OfficerWorkspace() {
     return () => { isMounted = false; };
   }, [initialCases]);
 
-  const officerActionCases = cases.filter(c =>
-    getWorkloadGroup(c.recommendation.status, c.caseClassification?.caseCategory) === "officer_action"
-  );
-  const beneficiaryActionCases = cases.filter(c =>
-    getWorkloadGroup(c.recommendation.status, c.caseClassification?.caseCategory) === "beneficiary_action"
-  );
-  const directOutcomeCases = cases.filter(c =>
-    getWorkloadGroup(c.recommendation.status, c.caseClassification?.caseCategory) === "direct_outcome"
-  );
+  const getGroup = (pkg: any) => pkg.workspaceBucket || getWorkloadGroup(pkg.recommendation.status, pkg.caseClassification?.caseCategory);
+
+  const officerActionCases = cases.filter(c => getGroup(c) === "requiresOfficerAction" || getGroup(c) === "officer_action");
+  const beneficiaryActionCases = cases.filter(c => getGroup(c) === "awaitingBeneficiaryAction" || getGroup(c) === "beneficiary_action");
+  const directOutcomeCases = cases.filter(c => getGroup(c) === "directOutcome" || getGroup(c) === "direct_outcome");
 
   const readyForConfirmationCount = officerActionCases.filter(c =>
     isReadyForConfirmationStatus(c.recommendation.status)
@@ -661,15 +663,22 @@ export default function OfficerWorkspace() {
   };
 
   const officerQueue = filteredCases.filter(pkg =>
-    getWorkloadGroup(pkg.recommendation.status, pkg.caseClassification?.caseCategory) === "officer_action"
+    getGroup(pkg) === "requiresOfficerAction" || getGroup(pkg) === "officer_action"
   );
 
   const beneficiaryQueue = filteredCases.filter(pkg =>
-    getWorkloadGroup(pkg.recommendation.status, pkg.caseClassification?.caseCategory) === "beneficiary_action"
+    getGroup(pkg) === "awaitingBeneficiaryAction" || getGroup(pkg) === "beneficiary_action"
   );
 
+  useEffect(() => {
+    if (officerQueue.length > 0 || beneficiaryQueue.length > 0) {
+      console.log("WORKSPACE GROUP requiresOfficerAction", officerQueue.map(c => c.caseData?.caseId || c.caseCode));
+      console.log("WORKSPACE GROUP awaitingBeneficiaryAction", beneficiaryQueue.map(c => c.caseData?.caseId || c.caseCode));
+    }
+  }, [cases, searchTerm, activeFilterId]);
+
   const directOutcomeQueue = filteredCases.filter(pkg =>
-    getWorkloadGroup(pkg.recommendation.status, pkg.caseClassification?.caseCategory) === "direct_outcome"
+    getGroup(pkg) === "directOutcome" || getGroup(pkg) === "direct_outcome"
   );
 
   const renderCaseRow = (pkg: typeof cases[0], i: number, queueType: "officer_action" | "beneficiary_action" | "direct_outcome") => {

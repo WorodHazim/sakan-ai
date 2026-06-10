@@ -66,7 +66,7 @@ export function getCustomReportById(caseId: string): any | null {
 }
 
 export function buildWorkspaceCaseFromReport(report: any) {
-  const summary = {
+  const summary: any = {
     caseData: report.caseData || report,
     recommendation: { ...(report.recommendation || {}) },
     reasonCodes: report.reasonCodes || [],
@@ -76,45 +76,55 @@ export function buildWorkspaceCaseFromReport(report: any) {
     source: "CUSTOM"
   };
 
-  const status = report.recommendation?.status || "";
-  const route = report.route || report.outcome || "";
-  const category = report.caseClassification?.caseCategory || "";
-  const resPath = report.recommendation?.resolutionPath || "";
+  const status = report.recommendation?.status || report.status || "";
+  const route = report.route || report.outcome || report.finalRoute || "";
+  const category = report.caseClassification?.caseCategory || report.caseCategory || "";
+  const resPath = report.recommendation?.resolutionPath || report.resolutionPath || "";
+  const nextAct = report.recommendation?.nextBestAction || report.nextBestAction || "";
+  const factorsStr = JSON.stringify(report.keyDecisionFactors || []);
+  const rcStr = JSON.stringify(report.reasonCodes || []);
 
   const isHumanitarian = 
     status.includes("Humanitarian Review Required") ||
     route.includes("Humanitarian Review Required") ||
     category.includes("Humanitarian") ||
     resPath.includes("Financial Stress Review") ||
+    resPath.includes("Humanitarian") ||
     resPath.includes("Officer / Specialist Review") ||
-    (report.reasonCodes || []).some((rc: any) => rc?.code === "HUMANITARIAN_REVIEW" || rc === "HUMANITARIAN_REVIEW");
+    rcStr.includes("HUMANITARIAN_REVIEW") ||
+    rcStr.includes("ROUTE_HUMANITARIAN_REVIEW") ||
+    factorsStr.toLowerCase().includes("supporting evidence") ||
+    factorsStr.toLowerCase().includes("human review") ||
+    nextAct.toLowerCase().includes("human officer") ||
+    nextAct.toLowerCase().includes("specialist");
 
-  const hasEvidence = !!(report.caseData?.supportingEvidenceFile) || ["CASE-C", "CASE-E"].includes(report.caseData?.caseId);
-  const isMissingEvidence = isHumanitarian && !hasEvidence;
+  const hasEvidence = !!(summary.caseData?.supportingEvidenceFile) || ["CASE-C", "CASE-E"].includes(summary.caseData?.caseId);
+  const isHumanitarianWithEvidence = isHumanitarian && hasEvidence;
 
-  console.log("WORKSPACE MAP humanitarian detected", report.caseData?.caseId || report.caseCode, isHumanitarian);
+  console.log("HUMANITARIAN NORMALIZE INPUT", summary.caseData?.caseId || report.caseCode, report);
+  console.log("HUMANITARIAN NORMALIZE DETECTED", summary.caseData?.caseId || report.caseCode, isHumanitarianWithEvidence);
 
-  if (isHumanitarian) {
-    if (isMissingEvidence) {
-      summary.recommendation.status = "Applicant Action Required";
-      summary.caseClassification = summary.caseClassification || {};
-      summary.caseClassification.caseCategory = "Supporting Evidence Required";
-      summary.recommendation.priority = summary.recommendation.priority || "Medium";
-      summary.recommendation.priorityReason = "Missing supporting evidence for humanitarian request.";
-      summary.recommendation.nextBestAction = "Wait for beneficiary to upload missing evidence.";
-      console.log("WORKSPACE MAP bucket", report.caseData?.caseId || report.caseCode, "beneficiary_action");
-      console.log("WORKSPACE MAP recommendation", report.caseData?.caseId || report.caseCode, summary.recommendation.status);
-    } else {
-      summary.recommendation.status = "Humanitarian Review Required";
-      summary.recommendation.resolutionPath = "Financial Stress Review";
-      summary.caseClassification = summary.caseClassification || {};
-      summary.caseClassification.caseCategory = "Humanitarian";
-      summary.recommendation.priority = summary.recommendation.priority || "Medium";
-      summary.recommendation.priorityReason = "Supporting evidence received; humanitarian officer review required.";
-      summary.recommendation.nextBestAction = "Assign to specialist or human officer for humanitarian review.";
-      console.log("WORKSPACE MAP bucket", report.caseData?.caseId || report.caseCode, "requiresOfficerAction");
-      console.log("WORKSPACE MAP recommendation", report.caseData?.caseId || report.caseCode, summary.recommendation.status);
-    }
+  if (isHumanitarianWithEvidence) {
+    summary.workspaceBucket = "requiresOfficerAction";
+    summary.section = "requiresOfficerAction";
+    summary.group = "requiresOfficerAction";
+    summary.recommendation.status = "Humanitarian Review Required";
+    summary.recommendation.resolutionPath = "Financial Stress Review";
+    summary.secondaryLabel = "Financial Stress Review";
+    summary.caseClassification.caseCategory = "Humanitarian";
+    summary.recommendation.priority = "Urgent";
+    summary.recommendation.priorityReason = "Supporting evidence received; humanitarian officer review required.";
+    summary.recommendation.nextBestAction = "Assign to specialist or human officer for humanitarian review.";
+    console.log("HUMANITARIAN NORMALIZE OUTPUT BUCKET", summary.caseData?.caseId || report.caseCode, summary.workspaceBucket);
+  } else if (isHumanitarian && !hasEvidence) {
+    summary.workspaceBucket = "awaitingBeneficiaryAction";
+    summary.section = "awaitingBeneficiaryAction";
+    summary.group = "awaitingBeneficiaryAction";
+    summary.recommendation.status = "Applicant Action Required";
+    summary.caseClassification.caseCategory = "Supporting Evidence Required";
+    summary.recommendation.priority = "Medium";
+    summary.recommendation.priorityReason = "Missing supporting evidence for humanitarian request.";
+    summary.recommendation.nextBestAction = "Wait for beneficiary to upload missing evidence.";
   }
 
   return summary;
