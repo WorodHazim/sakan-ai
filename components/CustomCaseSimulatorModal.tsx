@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, CheckCircle2, AlertTriangle, ArrowRight, X, ShieldCheck, UserCheck, Scale, FileText, HeartHandshake } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useDemo } from "@/lib/demo-context";
-import { saveCustomCase, addAgentTrace } from "@/lib/services/caseService";
 import { runDecisionAgent } from "@/lib/agent-rules";
+import { saveCustomReport } from "@/lib/customCaseStorage";
+import { saveCustomCase, addAgentTrace } from "@/lib/services/caseService";
 import { MOCK_CASES } from "@/lib/mock-data";
 
 const T = {
@@ -351,7 +352,6 @@ export function CustomCaseSimulatorModal({ isOpen, onClose, onCaseGenerated }: C
         hasAuthorizedSignature: true,
         employeeDetailsMatch: true,
         averageSalaryTransfer6Months,
-        hasMedicalDocument: supportingCircumstance === "Medical Circumstance" || customCaseData.evidenceUploaded,
         supportingEvidenceFile: customCaseData.evidenceUploaded && supportingCircumstance !== "None" ? "simulated_evidence.pdf" : undefined,
         supportingCircumstance: supportingCircumstance === "None" ? undefined : supportingCircumstance,
         identityVerified: isUaePass ? true : undefined,
@@ -368,8 +368,9 @@ export function CustomCaseSimulatorModal({ isOpen, onClose, onCaseGenerated }: C
       (newMockData as any).ocrWarnings = [];
 
 
-      saveCustomCase({
+      saveCustomReport({
         ...newMockData,
+        caseData: newMockData,
         recommendation: recStatus,
         routingPath: routingPathEn,
         nextOwner: nextOwnerEn,
@@ -377,7 +378,10 @@ export function CustomCaseSimulatorModal({ isOpen, onClose, onCaseGenerated }: C
         confidenceScore: confidence,
         nextBestAction: nextBestActionEn,
         status: recStatus,
-      }).then(() => {
+      });
+
+      // Maintain legacy API for trace
+      saveCustomCase(newMockData as any).then(() => {
         addAgentTrace(newCaseId, {
           actor: "Officer",
           action: "Custom case generated and evaluated by SAKAN AI",
@@ -388,6 +392,14 @@ export function CustomCaseSimulatorModal({ isOpen, onClose, onCaseGenerated }: C
 
       MOCK_CASES[newCaseId] = newMockData as any;
       const report = runDecisionAgent(newMockData as any);
+      saveCustomReport({
+        caseData: newMockData as any,
+        recommendation: report.recommendation,
+        reasonCodes: report.reasonCodes,
+        caseClassification: report.caseClassification,
+        fullReport: report,
+        createdAt: new Date().toISOString(),
+      });
 
       const newCaseCard = {
         caseId: newCaseId,

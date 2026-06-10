@@ -319,64 +319,48 @@ export default function OfficerWorkspace() {
     let isMounted = true;
     async function loadCases() {
       try {
-        const { getCases } = await import("@/lib/services/caseService");
-        const sakanCases = await getCases();
+        const { getWorkspaceCases, getCustomReports, buildWorkspaceCaseFromReport } = await import("@/lib/customCaseStorage");
+        const sakanCases = getWorkspaceCases();
+        const customReports = getCustomReports();
         if (!isMounted) return;
 
-        const mapped = sakanCases.map(sc => {
-          let caseData: any = MOCK_CASES[sc.caseCode];
-          if (!caseData && typeof window !== 'undefined') {
-            try {
-              const stored = localStorage.getItem(`customCase_${sc.caseCode}`);
-              if (stored) caseData = JSON.parse(stored);
-            } catch(e) {}
-          }
-          if (!caseData) {
-            caseData = {
-              caseId: sc.caseCode,
-              beneficiaryName: sc.beneficiaryName,
-              emiratesId: sc.emiratesId,
-              beneficiaryId: sc.beneficiaryId,
-              loanId: sc.loanId,
-              monthlyIncome: sc.monthlyIncome || 0,
-              financialObligations: sc.financialObligations || 0,
-              familyMembers: sc.familyMembers || 1,
-              currentInstallment: sc.currentInstallment || 0,
-              arrearsAmount: sc.arrearsAmount || 0,
-              unpaidInstallments: sc.unpaidInstallments || 0,
-              remainingLoanBalance: sc.remainingBalance || 0,
-              remainingRepaymentMonths: sc.remainingRepaymentMonths || 0,
-              activeRequest: !!sc.activeRequest,
-              paymentHistory: sc.paymentHistory || "Custom Case",
-              supportingCircumstance: sc.supportingCircumstance,
-            };
-          }
-          
-          const report = runDecisionAgent(caseData);
-          return {
-            caseData,
-            recommendation: report.recommendation,
-            reasonCodes: report.reasonCodes,
-            caseClassification: report.caseClassification,
-            createdAt: sc.createdAt || new Date().toISOString(),
-          };
+        const customMap = new Map();
+        
+        // Add existing workspace cases
+        sakanCases.forEach(sc => {
+           if (sc.caseData?.caseId) {
+               customMap.set(sc.caseData.caseId, sc);
+           }
         });
 
-        // sort newest first
-        mapped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        // Add custom reports, overwriting workspace cases
+        customReports.forEach(cr => {
+           const id = cr.caseData?.caseId || cr.caseCode;
+           if (id) {
+               customMap.set(id, buildWorkspaceCaseFromReport(cr));
+           }
+        });
+
+        const customList = Array.from(customMap.values());
+        customList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        const merged = [
+           ...customList,
+           ...initialCases.filter(c => !customMap.has(c.caseData.caseId))
+        ];
 
         if (process.env.NODE_ENV === "development") {
-          console.log("merged workspace cases count", mapped.length);
-          console.log("PERSISTENCE DO NOT CLEAR custom storage keys");
+          console.log("CUSTOM STORAGE workspace built from reports", customReports.length);
+          console.log("CUSTOM STORAGE merged workspace cases", merged.length);
         }
-        setCases(mapped);
+        setCases(merged);
       } catch (err) {
         console.error("Failed to load workspace cases", err);
       }
     }
     loadCases();
     return () => { isMounted = false; };
-  }, []);
+  }, [initialCases]);
 
   const officerActionCases = cases.filter(c =>
     getWorkloadGroup(c.recommendation.status, c.caseClassification?.caseCategory) === "officer_action"

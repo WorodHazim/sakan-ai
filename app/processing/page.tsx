@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useDemo } from "@/lib/demo-context";
 import { runDecisionAgent } from "@/lib/agent-rules";
-import { saveCustomCase } from "@/lib/services/caseService";
+import { saveCustomReport } from "@/lib/customCaseStorage";
 import { CaseData } from "@/lib/types";
 import { MOCK_CASES } from "@/lib/mock-data";
 
@@ -190,16 +190,14 @@ export default function AIProcessingScreen() {
         clearInterval(interval);
         setIsComplete(true);
         if (report && caseDataState) {
-          saveCustomCase({
+          saveCustomReport({
             ...caseDataState,
-            recommendation: report.recommendation.status || report.recommendation,
-            routingPath: report.recommendation.routingPath,
-            nextOwner: report.recommendation.nextOwner,
-            priority: report.recommendation.priority,
-            confidenceScore: report.recommendation.confidence,
+            caseData: caseDataState,
+            recommendation: report.recommendation,
             reasonCodes: report.reasonCodes,
-            status: report.recommendation.status || report.recommendation,
-            nextBestAction: report.recommendation.nextBestAction
+            caseClassification: report.caseClassification,
+            fullReport: report,
+            createdAt: new Date().toISOString(),
           });
         }
         return;

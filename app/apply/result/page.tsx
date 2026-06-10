@@ -7,6 +7,7 @@ import { runDecisionAgent } from "@/lib/agent-rules";
 import { hasHumanitarianCircumstance } from "@/lib/utils";
 import { getKeyDecisionFactors } from "@/lib/getKeyDecisionFactors";
 import { NO_AUTO_APPROVAL_NOTICE } from "@/lib/governanceAudit";
+import { getCustomReportById } from "@/lib/customCaseStorage";
 import { useDemo } from "@/lib/demo-context";
 import {
   AlertTriangle,
@@ -128,18 +129,21 @@ function ApplyResultContent() {
       setCaseData(rawDemo);
       setReport(runDecisionAgent(rawDemo));
     } else {
-      const storedCase = localStorage.getItem(`customCase_${caseId}`);
-      let parsedCaseData = null;
-
-      if (storedCase) {
+      let isMounted = true;
+      const loadCustom = async () => {
         try {
-          parsedCaseData = JSON.parse(storedCase);
-          setCaseData(parsedCaseData);
-          setReport(runDecisionAgent(parsedCaseData));
+          const { getCustomReportById } = await import("@/lib/customCaseStorage");
+          const storedReport = getCustomReportById(caseId);
+          if (storedReport && isMounted) {
+            setCaseData(storedReport.caseData);
+            setReport(storedReport);
+          }
         } catch (e) {
-          console.warn("Failed parsing custom case", e);
+          console.warn("Failed loading custom report", e);
         }
-      }
+      };
+      loadCustom();
+      return () => { isMounted = false; };
     }
   }, [caseId]);
 

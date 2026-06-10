@@ -558,120 +558,28 @@ export default function DecisionReportPage({
       return;
     }
 
-    // 2. Try localStorage customCase_[caseId]
-    let foundInLocalStorage = false;
-    if (typeof window !== "undefined") {
+    async function loadReportCase() {
       try {
-        const raw = localStorage.getItem(`customCase_${caseId}`);
-        console.log("[Report Restore] localStorage checked", { found: !!raw });
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const restored = {
-            caseId: parsed.caseId || caseId,
-            beneficiaryName: parsed.beneficiaryName || "Custom Case",
-            beneficiaryId: parsed.beneficiaryId || "BEN-784-CUS",
-            emiratesId: parsed.emiratesId || "784-1999-0000000-0",
-            loanId: parsed.loanId || "LOAN-CUS-001",
-            monthlyIncome: parsed.monthlyIncome || 0,
-            financialObligations: parsed.financialObligations || 0,
-            familyMembers: parsed.familyMembers || 1,
-            originalLoanAmount: parsed.originalLoanAmount || 0,
-            remainingLoanBalance: parsed.remainingLoanBalance || 0,
-            arrearsAmount: parsed.arrearsAmount || 0,
-            unpaidInstallments: parsed.unpaidInstallments || 0,
-            currentInstallment: parsed.currentInstallment || 0,
-            remainingRepaymentMonths: parsed.remainingRepaymentMonths || 0,
-            paymentHistory: parsed.paymentHistory || "Custom Simulator",
-            activeRequest: !!parsed.activeRequest,
-            salaryCertificateAmount: parsed.salaryCertificateAmount || parsed.monthlyIncome || 0,
-            salaryCertificateExpired: !!parsed.salaryCertificateExpired,
-            documentConfidence: parsed.documentConfidence || 90,
-            hasCompanyLetterhead: parsed.hasCompanyLetterhead ?? true,
-            hasAuthorizedSignature: parsed.hasAuthorizedSignature ?? true,
-            employeeDetailsMatch: parsed.employeeDetailsMatch ?? true,
-            averageSalaryTransfer6Months: parsed.averageSalaryTransfer6Months || parsed.monthlyIncome || 0,
-            hasMedicalDocument: !!parsed.hasMedicalDocument,
-            supportingCircumstance: parsed.supportingCircumstance,
-          };
-          MOCK_CASES[caseId] = restored as any;
-          setRestoredCaseData(restored);
-          foundInLocalStorage = true;
-          console.log("[Report Restore] localStorage restore success");
+        const { getCustomReportById } = await import("@/lib/customCaseStorage");
+        const customReport = getCustomReportById(caseId);
+        
+        if (customReport) {
+          console.log("[Report Restore] custom report restore success");
+          setRestoredCaseData(customReport.caseData);
+          setRestoredReportData(customReport);
           finish();
           return;
         }
-      } catch (e) {
-        console.warn("[Report Restore] localStorage parse error", e);
+
+        console.log("[Report Restore] no source available");
+        finish();
+      } catch (err) {
+        console.error("[Report Restore] Error", err);
+        finish();
       }
     }
-
-    // 3. Try Supabase as durable fallback
-    if (!foundInLocalStorage && isSupabaseConfigured && supabase) {
-      console.log("[Report Restore] trying Supabase");
-      const client = supabase;
-      const fetchFromSupabase = async () => {
-        try {
-          const { data, error } = await client
-            .from("cases")
-            .select("*")
-            .eq("case_code", caseId)
-            .limit(1);
-          console.log("[Report Restore] Supabase result", { found: !!(data && data.length > 0), error: !!error });
-          if (data && data.length > 0) {
-            const row = data[0];
-            let casePayload: any = {};
-            try {
-              casePayload = row.case_data ? JSON.parse(row.case_data) : {};
-            } catch { /* ignore */ }
-            const restored = {
-              caseId: casePayload.caseId || caseId,
-              beneficiaryName: casePayload.beneficiaryName || row.beneficiary_name || "Custom Case",
-              beneficiaryId: casePayload.beneficiaryId || "BEN-784-CUS",
-              emiratesId: casePayload.emiratesId || "784-1999-0000000-0",
-              loanId: casePayload.loanId || "LOAN-CUS-001",
-              monthlyIncome: casePayload.monthlyIncome || 0,
-              financialObligations: casePayload.financialObligations || 0,
-              familyMembers: casePayload.familyMembers || 1,
-              originalLoanAmount: casePayload.originalLoanAmount || 0,
-              remainingLoanBalance: casePayload.remainingLoanBalance || 0,
-              arrearsAmount: casePayload.arrearsAmount || 0,
-              unpaidInstallments: casePayload.unpaidInstallments || 0,
-              currentInstallment: casePayload.currentInstallment || 0,
-              remainingRepaymentMonths: casePayload.remainingRepaymentMonths || 0,
-              paymentHistory: casePayload.paymentHistory || "Custom Simulator",
-              activeRequest: !!casePayload.activeRequest,
-              salaryCertificateAmount: casePayload.salaryCertificateAmount || casePayload.monthlyIncome || 0,
-              salaryCertificateExpired: !!casePayload.salaryCertificateExpired,
-              documentConfidence: casePayload.documentConfidence || 90,
-              hasCompanyLetterhead: casePayload.hasCompanyLetterhead ?? true,
-              hasAuthorizedSignature: casePayload.hasAuthorizedSignature ?? true,
-              employeeDetailsMatch: casePayload.employeeDetailsMatch ?? true,
-              averageSalaryTransfer6Months: casePayload.averageSalaryTransfer6Months || casePayload.monthlyIncome || 0,
-              hasMedicalDocument: !!casePayload.hasMedicalDocument,
-              supportingCircumstance: casePayload.supportingCircumstance,
-            };
-            MOCK_CASES[caseId] = restored as any;
-            setRestoredCaseData(restored);
-            // Cache back to localStorage for future refreshes
-            if (typeof window !== "undefined") {
-              try { localStorage.setItem(`customCase_${caseId}`, JSON.stringify(restored)); } catch { /* ignore */ }
-            }
-            console.log("[Report Restore] Supabase restore success");
-          } else {
-            console.log("[Report Restore] Supabase returned no rows");
-          }
-        } catch (err) {
-          console.warn("[Report Restore] Supabase error", err);
-        } finally {
-          finish();
-        }
-      };
-      fetchFromSupabase();
-    } else if (!foundInLocalStorage) {
-      // No localStorage, no Supabase — nothing to restore
-      console.log("[Report Restore] no source available", { foundInLocalStorage, supabaseConfigured: isSupabaseConfigured });
-      finish();
-    }
+    
+    loadReportCase();
   }, [caseId]);
 
   // Resolve case data: MOCK_CASES for fixed cases, restored data for custom
@@ -700,10 +608,14 @@ export default function DecisionReportPage({
         status === "Applicant Action Required" ||
         caseId === "CASE-B";
 
-      if (isRejected) {
-        router.replace(`/apply/result?caseId=${caseId}`);
-      } else if (isApplicantAction) {
-        router.replace(`/apply?caseId=${caseId}`);
+      const isCustom = caseId.startsWith("CUSTOM") || caseId.startsWith("UAE-PASS-TEST");
+
+      if (!isCustom) {
+        if (isRejected) {
+          router.replace(`/apply/result?caseId=${caseId}`);
+        } else if (isApplicantAction) {
+          router.replace(`/apply?caseId=${caseId}`);
+        }
       }
     }
   }, [caseData, memoizedReport, caseId, router]);
