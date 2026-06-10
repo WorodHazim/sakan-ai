@@ -327,8 +327,8 @@ export default function OfficerWorkspace() {
       ...initialCases.filter(c => !customCaseIds.has(c.caseData.caseId))
     ];
     if (process.env.NODE_ENV === "development") {
-      console.log("PERSISTENCE: loaded workspace cases", customCases.length);
       console.log("merged workspace cases count", merged.length);
+      console.log("PERSISTENCE DO NOT CLEAR custom storage keys");
     }
     setCases(merged);
   }, []);

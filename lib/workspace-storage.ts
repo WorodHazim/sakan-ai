@@ -43,7 +43,7 @@ export function saveWorkspaceCase(workspaceCase: WorkspaceCase) {
 
     localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(existingCases));
     if (process.env.NODE_ENV === "development") {
-      console.log("PERSISTENCE: saved workspace case", lightweightCase.caseData.caseId);
+      console.log("PERSISTENCE SAVE workspace case", lightweightCase.caseData.caseId, lightweightCase.recommendation.status);
     }
 
     // 4. If there's a fullReport, save it to the reports key
@@ -62,7 +62,7 @@ export function getWorkspaceCases(): WorkspaceCase[] {
     if (existingStr) {
       const parsed = JSON.parse(existingStr) as WorkspaceCase[];
       if (process.env.NODE_ENV === "development") {
-        console.log("PERSISTENCE: loaded workspace cases", parsed.length);
+        console.log("PERSISTENCE LOAD workspace cases", parsed.length);
       }
       return parsed;
     }
@@ -83,7 +83,7 @@ export function saveCustomReport(caseId: string, fullReport: any) {
     reports[caseId] = fullReport;
     localStorage.setItem(CUSTOM_REPORTS_KEY, JSON.stringify(reports));
     if (process.env.NODE_ENV === "development") {
-      console.log("PERSISTENCE: saved custom report", caseId);
+      console.log("PERSISTENCE SAVE custom report", caseId, fullReport.recommendation.status);
     }
   } catch (err) {
     console.error("Failed to save custom report to localStorage", err);
@@ -98,7 +98,7 @@ export function getCustomReport(caseId: string): any | null {
       const reports = JSON.parse(existingStr);
       const found = !!reports[caseId];
       if (process.env.NODE_ENV === "development") {
-        console.log("PERSISTENCE: loaded custom report", caseId, found);
+        console.log("PERSISTENCE LOAD custom report", caseId, found);
       }
       return reports[caseId] || null;
     }

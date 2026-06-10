@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useDemo } from "@/lib/demo-context";
 import { runDecisionAgent } from "@/lib/agent-rules";
+import { saveWorkspaceCase } from "@/lib/workspace-storage";
+import { CaseData } from "@/lib/types";
 import { MOCK_CASES } from "@/lib/mock-data";
 
 import {
@@ -161,6 +163,8 @@ export default function AIProcessingScreen() {
   const [isComplete, setIsComplete] = useState(false);
   const [report, setReport] = useState<any>(null);
 
+  const [caseDataState, setCaseDataState] = useState<any>(null);
+
   useEffect(() => {
     let caseData = MOCK_CASES[selectedCaseId];
     if (!caseData && typeof window !== "undefined") {
@@ -172,6 +176,7 @@ export default function AIProcessingScreen() {
       }
     }
     if (caseData) {
+      setCaseDataState(caseData);
       setReport(runDecisionAgent(caseData));
     }
   }, [selectedCaseId]);
@@ -184,6 +189,17 @@ export default function AIProcessingScreen() {
       if (index >= totalSteps) {
         clearInterval(interval);
         setIsComplete(true);
+        if (report && caseDataState) {
+          saveWorkspaceCase({
+            caseData: caseDataState,
+            recommendation: report.recommendation,
+            reasonCodes: report.reasonCodes,
+            caseClassification: report.caseClassification,
+            fullReport: report,
+            createdAt: new Date().toISOString(),
+            source: "CUSTOM",
+          });
+        }
         return;
       }
 

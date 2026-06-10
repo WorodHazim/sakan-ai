@@ -7,7 +7,7 @@ import { runDecisionAgent } from "@/lib/agent-rules";
 import { hasHumanitarianCircumstance } from "@/lib/utils";
 import { getKeyDecisionFactors } from "@/lib/getKeyDecisionFactors";
 import { NO_AUTO_APPROVAL_NOTICE } from "@/lib/governanceAudit";
-import { saveWorkspaceCase } from "@/lib/workspace-storage";
+import { saveWorkspaceCase, getCustomReport } from "@/lib/workspace-storage";
 import { useDemo } from "@/lib/demo-context";
 import {
   AlertTriangle,
@@ -129,26 +129,49 @@ function ApplyResultContent() {
       setCaseData(rawDemo);
       setReport(runDecisionAgent(rawDemo));
     } else {
-      const stored = localStorage.getItem(`customCase_${caseId}`);
-      if (stored) {
+      const storedReport = getCustomReport(caseId);
+      const storedCase = localStorage.getItem(`customCase_${caseId}`);
+      let parsedCaseData = null;
+
+      if (storedCase) {
         try {
-          const parsed = JSON.parse(stored);
-          setCaseData(parsed);
-          const rpt = runDecisionAgent(parsed);
-          setReport(rpt);
-          
+          parsedCaseData = JSON.parse(storedCase);
+          setCaseData(parsedCaseData);
+        } catch (e) {
+          console.warn("Failed parsing custom case", e);
+        }
+      }
+
+      if (storedReport) {
+        setReport(storedReport);
+        console.log("PERSISTENCE LOAD custom report", caseId, true);
+        
+        // Also ensure it's in workspace cases
+        if (parsedCaseData) {
           saveWorkspaceCase({
-            caseData: parsed,
-            recommendation: rpt.recommendation,
-            reasonCodes: rpt.reasonCodes,
-            caseClassification: rpt.caseClassification,
-            fullReport: rpt,
+            caseData: parsedCaseData,
+            recommendation: storedReport.recommendation,
+            reasonCodes: storedReport.reasonCodes,
+            caseClassification: storedReport.caseClassification,
+            fullReport: storedReport,
             createdAt: new Date().toISOString(),
             source: "CUSTOM",
           });
-        } catch (e) {
-          console.warn("Failed parsing custom case from local storage", e);
         }
+      } else if (parsedCaseData) {
+        // Fallback: Recalculate
+        const rpt = runDecisionAgent(parsedCaseData);
+        setReport(rpt);
+        
+        saveWorkspaceCase({
+          caseData: parsedCaseData,
+          recommendation: rpt.recommendation,
+          reasonCodes: rpt.reasonCodes,
+          caseClassification: rpt.caseClassification,
+          fullReport: rpt,
+          createdAt: new Date().toISOString(),
+          source: "CUSTOM",
+        });
       }
     }
   }, [caseId]);
