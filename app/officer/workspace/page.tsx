@@ -350,9 +350,10 @@ export default function OfficerWorkspace() {
         ];
 
         if (process.env.NODE_ENV === "development") {
-          console.log("WORKSPACE LOAD custom cases", customReports.length);
+          console.log("WORKSPACE LOAD from sakan_workspace_cases", sakanCases.length);
+          console.log("WORKSPACE LOAD from sakan_custom_reports", customReports.length);
           const humCount = customList.filter(c => c.recommendation?.status?.includes("Humanitarian") || c.caseClassification?.caseCategory?.includes("Humanitarian")).length;
-          console.log("WORKSPACE humanitarian cases", humCount);
+          console.log("WORKSPACE humanitarian custom cases", humCount);
         }
         setCases(merged);
       } catch (err) {

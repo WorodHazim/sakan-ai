@@ -25,9 +25,12 @@ export function saveCustomReport(report: any) {
       const summary = buildWorkspaceCaseFromReport(report);
       saveWorkspaceCase(summary);
       
+      const route = report.route || report.outcome || summary.recommendation.status;
+      const bucket = "Requires Officer Action / Humanitarian Reviews";
       if (summary.recommendation.status === "Humanitarian Review Required") {
-        const route = report.route || report.outcome || summary.recommendation.status;
-        console.log("WORKSPACE SAVE humanitarian custom case", caseId, route);
+        console.log("WORKSPACE SAVE custom case", caseId, route, bucket);
+      } else {
+        console.log("WORKSPACE SAVE custom case", caseId, route, summary.recommendation.status);
       }
     }
   } catch (e) {
@@ -83,12 +86,16 @@ export function buildWorkspaceCaseFromReport(report: any) {
     route.includes("Humanitarian Review Required") ||
     category.includes("Humanitarian") ||
     resPath.includes("Financial Stress Review") ||
-    resPath.includes("Officer / Specialist Review");
+    resPath.includes("Officer / Specialist Review") ||
+    (report.reasonCodes || []).some((rc: any) => rc?.code === "HUMANITARIAN_REVIEW" || rc === "HUMANITARIAN_REVIEW");
+
+  console.log("HUMANITARIAN DETECTED FOR WORKSPACE", report.caseData?.caseId || report.caseCode, isHumanitarian);
 
   if (isHumanitarian) {
     summary.recommendation.status = "Humanitarian Review Required";
-    summary.recommendation.priorityReason = "Supporting evidence received; human review required";
-    summary.recommendation.nextBestAction = "Assign to specialist/human officer for review";
+    summary.recommendation.priority = summary.recommendation.priority || "Medium";
+    summary.recommendation.priorityReason = "Supporting evidence received; humanitarian officer review required.";
+    summary.recommendation.nextBestAction = "Assign to specialist or human officer for humanitarian review.";
   }
 
   return summary;
