@@ -11,6 +11,7 @@ import {
   isHumanitarianReviewStatus,
   isReadyForConfirmationStatus,
 } from "@/lib/workspaceWorkload";
+import { getWorkspaceCases } from "@/lib/workspace-storage";
 import { useDemo } from "@/lib/demo-context";
 import {
   ShieldCheck,
@@ -312,7 +313,25 @@ export default function OfficerWorkspace() {
     }
   };
 
-  const [cases, setCases] = useState(initialCases);
+  const [cases, setCases] = useState<any[]>([]);
+
+  useEffect(() => {
+    const customCases = getWorkspaceCases();
+    // Sort custom cases newest first
+    customCases.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    // Merge with initialCases avoiding duplicates
+    const customCaseIds = new Set(customCases.map(c => c.caseData.caseId));
+    const merged = [
+      ...customCases,
+      ...initialCases.filter(c => !customCaseIds.has(c.caseData.caseId))
+    ];
+    if (process.env.NODE_ENV === "development") {
+      console.log("loaded custom workspace cases count", customCases.length);
+      console.log("merged workspace cases count", merged.length);
+    }
+    setCases(merged);
+  }, []);
 
   const officerActionCases = cases.filter(c =>
     getWorkloadGroup(c.recommendation.status, c.caseClassification?.caseCategory) === "officer_action"

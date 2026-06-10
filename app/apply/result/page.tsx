@@ -7,6 +7,7 @@ import { runDecisionAgent } from "@/lib/agent-rules";
 import { hasHumanitarianCircumstance } from "@/lib/utils";
 import { getKeyDecisionFactors } from "@/lib/getKeyDecisionFactors";
 import { NO_AUTO_APPROVAL_NOTICE } from "@/lib/governanceAudit";
+import { saveWorkspaceCase } from "@/lib/workspace-storage";
 import { useDemo } from "@/lib/demo-context";
 import {
   AlertTriangle,
@@ -133,7 +134,17 @@ function ApplyResultContent() {
         try {
           const parsed = JSON.parse(stored);
           setCaseData(parsed);
-          setReport(runDecisionAgent(parsed));
+          const rpt = runDecisionAgent(parsed);
+          setReport(rpt);
+          
+          saveWorkspaceCase({
+            caseData: parsed,
+            recommendation: rpt.recommendation,
+            reasonCodes: rpt.reasonCodes,
+            caseClassification: rpt.caseClassification,
+            createdAt: new Date().toISOString(),
+            source: "CUSTOM",
+          });
         } catch (e) {
           console.warn("Failed parsing custom case from local storage", e);
         }
