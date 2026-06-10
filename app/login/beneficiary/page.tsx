@@ -95,15 +95,15 @@ export default function UaePassLogin() {
             </p>
           </div>
 
-          {/* Demo Mode Notice */}
+          {/* Demo UAE PASS fallback Notice */}
           <div className={`bg-amber-50 border border-amber-200 text-amber-900 text-xs p-4 rounded-xl ${isAr ? "text-right" : "text-left"} space-y-1`}>
             <p className="font-bold text-sm">
-              {isAr ? "وضع العرض التجريبي" : "Demo Mode"}
+              {isAr ? "وضع العرض التجريبي" : "Demo UAE PASS fallback"}
             </p>
             <p className="leading-relaxed opacity-90">
               {isAr
                 ? "وضع العرض التجريبي: تم محاكاة الهوية الرقمية لأغراض الهاكاثون. في البيئة الفعلية، يتم التحقق من الهوية من خلال التكامل الرسمي مع UAE PASS."
-                : "Demo Mode: UAE PASS is mocked for this hackathon demo. In production, identity verification would be handled through official UAE PASS integration."}
+                : "Demo UAE PASS fallback: UAE PASS is mocked for this hackathon demo. In production, identity verification would be handled through official UAE PASS integration."}
             </p>
           </div>
 

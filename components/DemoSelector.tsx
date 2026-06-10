@@ -1,9 +1,10 @@
 "use client";
 
 import { useDemo } from "@/lib/demo-context";
-import { FlaskConical, X } from "lucide-react";
-import { useState } from "react";
+import { FlaskConical, X, PlusCircle } from "lucide-react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { CustomCaseSimulatorModal } from "./CustomCaseSimulatorModal";
 
 const CASES = [
   {
@@ -27,13 +28,48 @@ const CASES = [
     color: "text-sakan-danger",
     dot: "bg-sakan-danger",
   },
+  {
+    id: "CASE-D",
+    label: "Duplicate / Policy Conflict",
+    outcome: "Active Request Found → Direct Beneficiary Outcome",
+    color: "text-sakan-danger",
+    dot: "bg-sakan-danger",
+  },
+  {
+    id: "CASE-E",
+    label: "Income Loss / Vulnerability",
+    outcome: "Humanitarian Review",
+    color: "text-sakan-warning",
+    dot: "bg-sakan-warning",
+  },
 ];
 
 export function DemoSelector() {
-  const { selectedCaseId, setSelectedCaseId } = useDemo();
+  // ── All hooks first (Rules of Hooks: never call after conditional return) ──
+  const { selectedCaseId, setSelectedCaseId, language } = useDemo();
+  const [hasMounted, setHasMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isCustomOpen, setIsCustomOpen] = useState(false);
 
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  // ── Derived values ──
+  const isAr = language === "AR";
   const active = CASES.find((c) => c.id === selectedCaseId);
+
+  // ── Hydration-safe: neutral badge until client mount ──
+  if (!hasMounted) {
+    return (
+      <div className="fixed bottom-6 left-6 z-50">
+        <button className="group flex items-center gap-2 bg-sakan-navy text-white pl-3 pr-4 py-2.5 rounded-full shadow-lg hover:bg-sakan-navy/90 transition-all border border-white/10 opacity-50">
+          <FlaskConical className="w-4 h-4 text-sakan-gold" />
+          <span className="text-xs font-semibold">Loading...</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-6 left-6 z-50">
@@ -56,11 +92,11 @@ export function DemoSelector() {
               </button>
             </div>
 
-            <div className="p-3 space-y-2">
+            <div className="p-3 space-y-2 max-h-[350px] overflow-y-auto">
               {CASES.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => { setSelectedCaseId(c.id as any); setIsOpen(false); }}
+                  onClick={() => { setSelectedCaseId(c.id); setIsOpen(false); }}
                   className={`w-full text-left p-3.5 rounded-xl border transition-all ${
                     selectedCaseId === c.id
                       ? "bg-sakan-navy text-white border-sakan-navy shadow-sm"
@@ -76,6 +112,19 @@ export function DemoSelector() {
                   </div>
                 </button>
               ))}
+
+              <div className="border-t border-sakan-border/50 pt-2 mt-2">
+                <button
+                  onClick={() => {
+                    setIsCustomOpen(true);
+                    setIsOpen(false);
+                  }}
+                  className="w-full bg-sakan-gold text-sakan-navy p-3 rounded-xl font-bold text-xs hover:bg-sakan-gold/90 transition-all text-center flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  {isAr ? "إنشاء حالة تجريبية مخصصة" : "Create Custom Demo Case"}
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -87,10 +136,15 @@ export function DemoSelector() {
       >
         <FlaskConical className="w-4 h-4 text-sakan-gold" />
         <span className="text-xs font-semibold">
-          Demo: <span className="text-sakan-gold">{selectedCaseId}</span>
+          Demo: <span className="text-sakan-gold">{selectedCaseId.startsWith("CUSTOM") ? "CUSTOM" : selectedCaseId}</span>
         </span>
-        <div className={`w-2 h-2 rounded-full ${active?.dot ?? "bg-white/40"}`} />
+        <div className={`w-2 h-2 rounded-full ${active?.dot ?? "bg-sakan-gold"}`} />
       </button>
+
+      <CustomCaseSimulatorModal
+        isOpen={isCustomOpen}
+        onClose={() => setIsCustomOpen(false)}
+      />
     </div>
   );
 }

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useDemo } from "@/lib/demo-context";
-import { Building2, ArrowRight, ShieldCheck, User, FileSearch, Cpu, AlertOctagon, Languages, FlaskConical, Fingerprint } from "lucide-react";
+import { Building2, ArrowRight, ShieldCheck, User, FileSearch, Cpu, AlertOctagon, Languages } from "lucide-react";
 import { motion } from "framer-motion";
 import { CustomCaseSimulatorModal } from "@/components/CustomCaseSimulatorModal";
 
@@ -30,18 +30,7 @@ const TRANSLATIONS = {
     loginBeneficiaryDesc: "Submit a rescheduling request",
     loginOfficer: "Login as Officer",
     loginOfficerDesc: "Review AI-processed cases",
-    createCustomCase: "Create Custom Demo Case",
-    createCustomCaseDesc: "Configure and test a custom case simulation",
-    uaePassTest: "UAE PASS Staging Test",
-    uaePassTestDesc: "Test identity verification via UAE PASS staging",
-    officialDemo: "Official Hackathon Demo · MOEI Challenge",
-    demoGuideTitle: "Demo Flow",
-    demoGuideCases: [
-      { id: "CASE-A", desc: "Clean eligible case: recommended for officer confirmation." },
-      { id: "CASE-B", desc: "Document issue: returned to beneficiary before officer review." },
-      { id: "CASE-D", desc: "Active request found: direct beneficiary outcome, not routed to officer." },
-      { id: "UAE PASS", desc: "Real staging authentication with safe demo fallback." }
-    ]
+    officialDemo: "Official Hackathon Demo · MOEI Challenge"
   },
   AR: {
     heroSubtitle: "نظام ذكي لإعادة جدولة متأخرات القروض السكنية",
@@ -65,24 +54,13 @@ const TRANSLATIONS = {
     loginBeneficiaryDesc: "تقديم طلب إعادة جدولة جديد",
     loginOfficer: "تسجيل الدخول كموظف مختص",
     loginOfficerDesc: "مراجعة واعتماد الحالات المعالجة",
-    createCustomCase: "إنشاء حالة تجريبية مخصصة",
-    createCustomCaseDesc: "تهيئة واختبار محاكاة حالة مخصصة جديدة",
-    uaePassTest: "اختبار عبر UAE PASS Staging",
-    uaePassTestDesc: "اختبار التحقق من الهوية عبر UAE PASS Staging",
-    officialDemo: "العرض التجريبي الرسمي الهاكاثون · تحدي وزارة الطاقة والبنية التحتية",
-    demoGuideTitle: "دليل العرض التجريبي",
-    demoGuideCases: [
-      { id: "CASE-A", desc: "حالة مستوفية: موصى بالاعتماد للموظف المختص." },
-      { id: "CASE-B", desc: "مشكلة مستندات: تعاد للمستفيد قبل المراجعة البشرية." },
-      { id: "CASE-D", desc: "طلب نشط: نتيجة مباشرة للمستفيد، لا توجه للموظف." },
-      { id: "UAE PASS", desc: "استيثاق حقيقي عبر UAE PASS Staging مع خيار تجريبي بديل." }
-    ]
+    officialDemo: "العرض التجريبي الرسمي الهاكاثون · تحدي وزارة الطاقة والبنية التحتية"
   }
 };
 
 export default function LandingPage() {
   const { language, setLanguage } = useDemo();
-  const [isCustomOpen, setIsCustomOpen] = useState(false);
+  const [customCaseOpen, setCustomCaseOpen] = useState(false);
   const t = TRANSLATIONS[language];
   const isAr = language === "AR";
 
@@ -223,56 +201,25 @@ export default function LandingPage() {
             <ArrowRight className={`w-5 h-5 text-sakan-navy transition-transform duration-300 ${isAr ? "rotate-180 group-hover:-translate-x-1" : "group-hover:translate-x-1"}`} />
           </Link>
 
-          <Link
-            href="/uaepass-test"
-            className="group flex items-center justify-between bg-sakan-gold text-sakan-navy px-6 py-4 rounded-xl border-2 border-sakan-gold hover:bg-sakan-gold/90 transition-all shadow-sm"
-          >
-            <div className="flex items-center gap-4">
-              <div className="bg-white/20 p-2.5 rounded-xl">
-                <Fingerprint className="w-6 h-6 text-sakan-navy" />
-              </div>
-              <div className={isAr ? "text-right" : "text-left"}>
-                <div className={`font-bold text-base md:text-lg text-sakan-navy ${isAr ? "leading-normal" : ""}`}>{t.uaePassTest}</div>
-                <div className={`text-xs text-sakan-navy/80 mt-0.5 ${isAr ? "text-[11px]" : ""}`}>{t.uaePassTestDesc}</div>
-              </div>
-            </div>
-            <ArrowRight className={`w-5 h-5 text-sakan-navy transition-transform duration-300 ${isAr ? "rotate-180 group-hover:-translate-x-1" : "group-hover:translate-x-1"}`} />
-          </Link>
-
           <button
-            onClick={() => setIsCustomOpen(true)}
-            className="group flex items-center justify-between bg-sakan-gold/10 text-sakan-navy px-6 py-4 rounded-xl border-2 border-sakan-gold/30 hover:border-sakan-gold hover:bg-sakan-gold/20 transition-all shadow-sm text-start"
+            onClick={() => setCustomCaseOpen(true)}
+            className="group flex items-center justify-between bg-white text-sakan-gold px-6 py-4 rounded-xl border-2 border-dashed border-sakan-gold hover:bg-sakan-gold/10 transition-all shadow-sm cursor-pointer"
           >
             <div className="flex items-center gap-4">
-              <div className="bg-sakan-gold/20 p-2.5 rounded-xl border border-sakan-gold/30">
-                <FlaskConical className="w-6 h-6 text-sakan-navy" />
+              <div className="bg-sakan-gold/10 p-2.5 rounded-xl border border-sakan-gold/25">
+                <Cpu className="w-6 h-6 text-sakan-gold" />
               </div>
               <div className={isAr ? "text-right" : "text-left"}>
-                <div className={`font-bold text-base md:text-lg text-sakan-navy ${isAr ? "leading-normal" : ""}`}>{t.createCustomCase}</div>
-                <div className={`text-xs text-sakan-text/70 mt-0.5 ${isAr ? "text-[11px]" : ""}`}>{t.createCustomCaseDesc}</div>
+                <div className={`font-bold text-base md:text-lg text-sakan-navy ${isAr ? "leading-normal text-start" : "text-start"}`}>
+                  {isAr ? "إنشاء حالة تجريبية مخصصة" : "Create Custom Demo Case"}
+                </div>
+                <div className={`text-xs text-sakan-text/70 mt-0.5 text-start ${isAr ? "text-[11px]" : ""}`}>
+                  {isAr ? "محاكاة حالة جديدة وتقييمها بالذكاء الاصطناعي" : "Simulate and evaluate a new custom case"}
+                </div>
               </div>
             </div>
-            <ArrowRight className={`w-5 h-5 text-sakan-navy transition-transform duration-300 ${isAr ? "rotate-180 group-hover:-translate-x-1" : "group-hover:translate-x-1"}`} />
+            <ArrowRight className={`w-5 h-5 text-sakan-gold transition-transform duration-300 ${isAr ? "rotate-180 group-hover:-translate-x-1" : "group-hover:translate-x-1"}`} />
           </button>
-        </div>
-
-        {/* Demo Guide Panel */}
-        <div className="bg-sakan-bg/50 p-6 rounded-2xl border border-sakan-border/60 max-w-xl mx-auto text-start shadow-sm mt-8">
-          <h3 className={`text-sakan-navy font-bold text-sm mb-4 uppercase tracking-wider ${isAr ? "tracking-normal" : ""}`}>
-            {t.demoGuideTitle}
-          </h3>
-          <ul className="space-y-3">
-            {t.demoGuideCases.map((item, idx) => (
-              <li key={idx} className="flex items-start gap-3">
-                <div className="bg-white px-2 py-0.5 rounded text-[10px] font-bold text-sakan-navy border border-sakan-border shrink-0 mt-0.5 whitespace-nowrap shadow-sm">
-                  {item.id}
-                </div>
-                <div className="text-sakan-text/80 text-sm font-medium leading-relaxed">
-                  {item.desc}
-                </div>
-              </li>
-            ))}
-          </ul>
         </div>
 
         {/* Footer Challenge Label */}
@@ -282,8 +229,8 @@ export default function LandingPage() {
       </motion.div>
 
       <CustomCaseSimulatorModal
-        isOpen={isCustomOpen}
-        onClose={() => setIsCustomOpen(false)}
+        isOpen={customCaseOpen}
+        onClose={() => setCustomCaseOpen(false)}
       />
     </div>
   );

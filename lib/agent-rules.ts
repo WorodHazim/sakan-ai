@@ -7,20 +7,55 @@ import {
   DecisionReportPackage,
   AuditTrailEvent,
 } from "./types";
+import { buildAgentChain, checkHasBlockingDocumentIssues } from "./agent-orchestrator";
+
+export function parseNumber(value: number | string | null | undefined): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/,/g, "").trim();
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export function formatAmount(value: number | string | null | undefined): string {
+  const amount = parseNumber(value);
+  if (amount === null) return "Not available";
+  return amount.toLocaleString("en-US");
+}
 
 export function validateDocuments(caseData: CaseData): DocumentValidationResult {
   const warnings: string[] = [];
   const reasonCodes: string[] = [];
 
-  const documentStatus = caseData.salaryCertificateExpired ? "Expired" : "Valid";
-  const mismatch = caseData.monthlyIncome !== caseData.salaryCertificateAmount;
+  const monthlyIncome = parseNumber(caseData.monthlyIncome);
+  const salaryCertificateAmount = parseNumber(caseData.salaryCertificateAmount);
+  const averageSalaryTransfer6Months = parseNumber(caseData.averageSalaryTransfer6Months);
+
+  let documentStatus: "Valid" | "Expired" | "Missing" = "Valid";
+  if (salaryCertificateAmount === null) {
+    documentStatus = "Missing";
+  } else if (caseData.salaryCertificateExpired) {
+    documentStatus = "Expired";
+  }
+
+  const mismatch = (monthlyIncome !== null && salaryCertificateAmount !== null)
+    ? monthlyIncome !== salaryCertificateAmount
+    : false;
 
   const salaryCertificateChecks = {
-    hasCompanyLetterhead: caseData.hasCompanyLetterhead,
-    hasAuthorizedSignature: caseData.hasAuthorizedSignature,
-    employeeDetailsMatch: caseData.employeeDetailsMatch,
+    hasCompanyLetterhead: caseData.hasCompanyLetterhead !== false,
+    hasAuthorizedSignature: caseData.hasAuthorizedSignature !== false,
+    employeeDetailsMatch: caseData.employeeDetailsMatch !== false,
+    hasStamp: caseData.hasStamp !== false,
     dateValid: !caseData.salaryCertificateExpired,
   };
+
+  if (averageSalaryTransfer6Months === null) {
+    warnings.push("Average salary transfer is not available yet.");
+    warnings.push("متوسط التحويل البنكي غير متاح حاليًا.");
+  }
 
   if (!salaryCertificateChecks.hasCompanyLetterhead) {
     reasonCodes.push("RC-17");
@@ -34,29 +69,67 @@ export function validateDocuments(caseData: CaseData): DocumentValidationResult 
     reasonCodes.push("RC-19");
     warnings.push("Employee details on certificate do not match profile.");
   }
+  if (caseData.hasStamp === false) {
+    reasonCodes.push("RC-22");
+    warnings.push("Missing company stamp on salary certificate.");
+  }
   if (documentStatus === "Expired") {
     reasonCodes.push("RC-11");
     warnings.push("Salary certificate is expired (exceeds 30-day validity window).");
   }
   if (mismatch) {
     reasonCodes.push("RC-08");
-    warnings.push(`Salary mismatch: profile income AED ${caseData.monthlyIncome.toLocaleString('en-US')}, certificate shows AED ${caseData.salaryCertificateAmount.toLocaleString('en-US')}.`);
+    warnings.push(`Salary mismatch: profile income AED ${formatAmount(monthlyIncome)}, certificate shows AED ${formatAmount(salaryCertificateAmount)}.`);
   }
-  if (caseData.documentConfidence < 80) {
+  let ocrNeedsReview = false;
+  let ocrConfidenceLow = false;
+
+  const ocrModeLower = (caseData.ocrMode || "").toLowerCase();
+  const isFallbackOcr = ["fallback", "cached_fallback", "demo_fallback"].includes(ocrModeLower);
+  const hasLowConfidenceWarning = (caseData.ocrWarnings || []).some(w => w.toLowerCase().includes("low confidence"));
+
+  if (isFallbackOcr) {
+    if ((caseData.documentConfidence ?? 100) < 80 || hasLowConfidenceWarning) {
+      ocrNeedsReview = true;
+      ocrConfidenceLow = true;
+    }
+  } else if (ocrModeLower.includes("tesseract")) {
+    if ((caseData.documentConfidence ?? 100) < 80 || (caseData.ocrWarnings && caseData.ocrWarnings.length > 0)) {
+      ocrNeedsReview = true;
+    }
+  }
+
+  if (ocrConfidenceLow) {
+    reasonCodes.push("RC-15");
+    warnings.push("OCR confidence is low");
+  } else if ((caseData.documentConfidence ?? 0) < 80 && !ocrModeLower.includes("live") && caseData.ocrMode) {
     reasonCodes.push("RC-15");
     warnings.push("Document confidence score is below 80%.");
   }
 
-  const variance = Math.abs(caseData.salaryCertificateAmount - caseData.averageSalaryTransfer6Months) / caseData.salaryCertificateAmount;
-  const bankConsistencyResult = variance <= 0.05 ? "Consistent" : "Inconsistent";
+  let bankConsistencyResult: "Consistent" | "Inconsistent" = "Consistent";
+  if (salaryCertificateAmount !== null && averageSalaryTransfer6Months !== null && salaryCertificateAmount > 0) {
+    const variance = Math.abs(salaryCertificateAmount - averageSalaryTransfer6Months) / salaryCertificateAmount;
+    bankConsistencyResult = variance <= 0.05 ? "Consistent" : "Inconsistent";
+  } else if (salaryCertificateAmount === null || averageSalaryTransfer6Months === null) {
+    bankConsistencyResult = "Inconsistent";
+  }
 
   if (bankConsistencyResult === "Inconsistent") {
-    reasonCodes.push("RC-20");
-    warnings.push(`Bank statement average transfer (AED ${caseData.averageSalaryTransfer6Months.toLocaleString('en-US')}) is inconsistent with salary certificate (AED ${caseData.salaryCertificateAmount.toLocaleString('en-US')}).`);
+    if (caseData.bankProofFile) {
+      warnings.push("Bank statement average transfer discrepancy: Proof provided — pending verification.");
+    } else {
+      reasonCodes.push("RC-20");
+      if (averageSalaryTransfer6Months !== null && salaryCertificateAmount !== null) {
+        warnings.push(`Bank statement average transfer (AED ${formatAmount(averageSalaryTransfer6Months)}) is inconsistent with salary certificate (AED ${formatAmount(salaryCertificateAmount)}).`);
+      } else {
+        warnings.push("Bank statement verification pending due to missing amounts.");
+      }
+    }
   }
 
   const bankCrossCheck = {
-    averageTransfer: caseData.averageSalaryTransfer6Months,
+    averageTransfer: averageSalaryTransfer6Months ?? 0,
     consistencyResult: bankConsistencyResult as "Consistent" | "Inconsistent",
     confidenceScore: bankConsistencyResult === "Consistent" ? 98 : 65,
   };
@@ -76,13 +149,16 @@ export function validateDocuments(caseData: CaseData): DocumentValidationResult 
 
   return {
     documentStatus,
-    extractedSalary: caseData.salaryCertificateAmount,
+    extractedSalary: salaryCertificateAmount ?? 0,
     mismatch,
     salaryCertificateChecks,
     bankCrossCheck,
     medicalValidation,
     reasonCodes,
     warnings,
+    ocrNeedsReview,
+    ocrConfidenceLow,
+    ocrMode: caseData.ocrMode,
   };
 }
 
@@ -101,34 +177,48 @@ export function checkActiveRequest(caseData: CaseData) {
 }
 
 export function calculateFinancialCapacity(caseData: CaseData): FinancialCapacityResult {
-  const obligationsRatio = caseData.financialObligations / caseData.monthlyIncome;
-  const netAvailableIncome = caseData.monthlyIncome - caseData.financialObligations;
-  const incomePerFamilyMember = caseData.monthlyIncome / caseData.familyMembers;
+  const monthlyIncome = parseNumber(caseData.monthlyIncome) ?? 0;
+  const financialObligations = parseNumber(caseData.financialObligations) ?? 0;
+  const familyMembers = parseNumber(caseData.familyMembers) ?? 1;
+  const currentInstallment = parseNumber(caseData.currentInstallment) ?? 0;
+  const arrearsAmount = parseNumber(caseData.arrearsAmount) ?? 0;
 
-  const max20PercentDeduction = caseData.monthlyIncome * 0.2;
-  const proposedAvailableRoom = max20PercentDeduction - caseData.currentInstallment;
+  const obligationsRatio = monthlyIncome > 0 ? financialObligations / monthlyIncome : 0;
+  const netAvailableIncome = monthlyIncome - financialObligations;
+  const incomePerFamilyMember = familyMembers > 0 ? monthlyIncome / familyMembers : 0;
+
+  const max20PercentDeduction = monthlyIncome * 0.2;
+  const proposedAvailableRoom = max20PercentDeduction - currentInstallment;
 
   let proposedArrearsPayment = 0;
   let proposedDurationMonths: number | null = null;
-  let proposedTotalDeduction = caseData.currentInstallment;
+  let proposedTotalDeduction = currentInstallment;
 
-  if (proposedAvailableRoom > 0) {
-    proposedArrearsPayment = Math.min(proposedAvailableRoom, caseData.arrearsAmount);
+  if (caseData.selectedMonthlyArrearsDeduction !== undefined) {
+    proposedArrearsPayment = caseData.selectedMonthlyArrearsDeduction;
+    proposedDurationMonths = caseData.selectedDurationMonths !== undefined
+      ? caseData.selectedDurationMonths
+      : (proposedArrearsPayment > 0 ? Math.ceil(arrearsAmount / proposedArrearsPayment) : null);
+    proposedTotalDeduction = caseData.newTotalInstallment !== undefined
+      ? caseData.newTotalInstallment
+      : (currentInstallment + proposedArrearsPayment);
+  } else if (proposedAvailableRoom > 0) {
+    proposedArrearsPayment = Math.min(proposedAvailableRoom, arrearsAmount);
     if (proposedArrearsPayment > 0) {
-      proposedDurationMonths = Math.ceil(caseData.arrearsAmount / proposedArrearsPayment);
-      proposedTotalDeduction = caseData.currentInstallment + proposedArrearsPayment;
+      proposedDurationMonths = Math.ceil(arrearsAmount / proposedArrearsPayment);
+      proposedTotalDeduction = currentInstallment + proposedArrearsPayment;
     }
   }
 
-  const deductionRatio = proposedTotalDeduction / caseData.monthlyIncome;
+  const deductionRatio = monthlyIncome > 0 ? proposedTotalDeduction / monthlyIncome : 0;
 
   return {
-    monthlyIncome: caseData.monthlyIncome,
+    monthlyIncome,
     obligationsRatio,
     netAvailableIncome,
     incomePerFamilyMember,
     max20PercentDeduction,
-    currentInstallment: caseData.currentInstallment,
+    currentInstallment,
     proposedArrearsPayment,
     proposedTotalDeduction,
     deductionRatio,
@@ -226,10 +316,110 @@ export function generateRecommendation(
     financialAnalysis.obligationsRatio > 0.6 ? 72 : 96;
   const confidenceScore = Math.min(baseConfidence, caseData.documentConfidence);
 
-  // CASE-E: Unemployment / Income Loss
-  if (caseData.monthlyIncome === 0 || caseData.supportingCircumstance?.includes("Unemployment")) {
+  if (documentValidation.ocrNeedsReview) {
+    const hasHighRiskOrHumanitarian = !!(
+      caseData.activeRequest ||
+      financialAnalysis.obligationsRatio > 0.6 ||
+      financialAnalysis.incomePerFamilyMember < 3000 ||
+      caseData.supportingCircumstance ||
+      caseData.monthlyIncome === 0
+    );
+
+    if (hasHighRiskOrHumanitarian) {
+      return {
+        status: "Human Review Required",
+        resolutionPath: "Human Review Required",
+        recommendation: "Policy conflict or low OCR confidence detected. Human officer review is required before a final decision.",
+        nextBestAction: "Assign the case to a human officer for manual review.",
+        proposedMonthlyDeduction: null,
+        proposedDurationMonths: null,
+        confidenceScore,
+        humanReviewRequired: true,
+        explanation: "This case is not eligible for automatic approval because the OCR confidence is low, and high-risk financial or humanitarian indicators are present. A human officer must review the case before a final decision.",
+        priority: "High",
+        priorityReason: "Low OCR confidence combined with high-risk financial or humanitarian indicators."
+      };
+    } else {
+      return {
+        status: "Applicant Action Required",
+        resolutionPath: "Additional Information Required",
+        recommendation: "Request updated documentation due to low OCR confidence.",
+        nextBestAction: "Send request for an updated salary certificate issued within the last 30 days and request bank statement clarification.",
+        proposedMonthlyDeduction: null,
+        proposedDurationMonths: null,
+        confidenceScore,
+        humanReviewRequired: false,
+        explanation: "The system cannot proceed with this request because the OCR reader returned low confidence. Please request a clear, updated salary certificate from the beneficiary.",
+        priority: "Medium",
+        priorityReason: "Low OCR confidence. Additional information is required."
+      };
+    }
+  }
+
+  const circumstanceLower = (caseData.supportingCircumstance || "").toLowerCase();
+  const familyMembersVal = parseNumber(caseData.familyMembers) ?? 1;
+  const monthlyIncomeVal = parseNumber(caseData.monthlyIncome) ?? 0;
+  const hasHumanitarian = 
+    monthlyIncomeVal === 0 ||
+    circumstanceLower.includes("unemployment") ||
+    circumstanceLower.includes("job loss") ||
+    circumstanceLower.includes("income loss") ||
+    caseData.hasMedicalDocument === true ||
+    circumstanceLower.includes("medical") ||
+    circumstanceLower.includes("health") ||
+    circumstanceLower.includes("treatment") ||
+    circumstanceLower.includes("hardship") ||
+    circumstanceLower.includes("social") ||
+    circumstanceLower.includes("vulnerability") ||
+    (familyMembersVal > 0 && monthlyIncomeVal / familyMembersVal < 3000) ||
+    circumstanceLower.includes("delay") ||
+    circumstanceLower.includes("project delay") ||
+    circumstanceLower.includes("exception");
+
+  const hasHumanitarianProof = !!caseData.supportingEvidenceFile || 
+    caseData.caseId === "CASE-C" || caseData.caseId === "CASE-E" ||
+    caseData.caseId === "CASE-C" || caseData.caseId === "CASE-E";
+
+  const hasDocIssues = checkHasBlockingDocumentIssues(caseData, documentValidation);
+
+  // 1. Humanitarian / exception WITHOUT proof
+  if (hasHumanitarian && !hasHumanitarianProof) {
     return {
-      status: "Human Review Required",
+      status: "Applicant Action Required",
+      resolutionPath: "Additional Information Required",
+      recommendation: "Please upload supporting evidence for the selected circumstance before the case can be reviewed.",
+      nextBestAction: "Upload supporting evidence for the selected circumstance.",
+      proposedMonthlyDeduction: null,
+      proposedDurationMonths: null,
+      confidenceScore,
+      humanReviewRequired: false,
+      explanation: "Humanitarian/exception circumstance was claimed but no supporting evidence was provided. The request remains in Applicant Action Required status.",
+      priority: "Medium",
+      priorityReason: "Supporting evidence required."
+    };
+  }
+
+  // 2. Document issues with NO humanitarian WITH proof
+  if (hasDocIssues && !(hasHumanitarian && hasHumanitarianProof)) {
+    return {
+      status: "Applicant Action Required",
+      resolutionPath: "Additional Information Required",
+      recommendation: "Request updated documentation or clarification before proceeding.",
+      nextBestAction: "Upload a corrected salary certificate and/or update declared income/bank evidence.",
+      proposedMonthlyDeduction: null,
+      proposedDurationMonths: null,
+      confidenceScore,
+      humanReviewRequired: false,
+      explanation: "The system cannot proceed with this request. The submitted salary certificate is expired, or there is a mismatch between declared income, certificate values, and bank average transfer records.",
+      priority: "Medium",
+      priorityReason: "Waiting for updated salary certificate and bank statement clarification."
+    };
+  }
+
+  // 3. CASE-E: Unemployment / Income Loss (with proof)
+  if (monthlyIncomeVal === 0 || circumstanceLower.includes("unemployment")) {
+    return {
+      status: "Humanitarian Review Required",
       resolutionPath: "Financial Stress Review",
       recommendation: "Move arrears to the end of the repayment period without increasing current monthly installment.",
       nextBestAction: "Assign to specialized case officer for unemployment review.",
@@ -243,44 +433,27 @@ export function generateRecommendation(
     };
   }
 
-  // CASE-D: Rejection Recommended (Duplicate without Humanitarian)
-  if (caseData.activeRequest && !caseData.supportingCircumstance) {
+  // 4. CASE-D: Rejection Recommended (Duplicate without Humanitarian)
+  if (caseData.activeRequest && !hasHumanitarian) {
     return {
-      status: "Rejected",
+      status: "Rejection Recommendation / Not Eligible",
       resolutionPath: "Rejected / Not Eligible",
-      recommendation: "Active duplicate request found without humanitarian indicators.",
-      nextBestAction: "Review and process rejection.",
-      proposedMonthlyDeduction: null,
-      proposedDurationMonths: null,
-      confidenceScore,
-      humanReviewRequired: true,
-      explanation: "Active duplicate request found. The application is eligible for automatic rejection as no humanitarian indicators are present.",
-      priority: "Medium",
-      priorityReason: "Active duplicate request found without humanitarian indicators."
-    };
-  }
-
-  // CASE-B: Document issues → Additional Information Required
-  if (documentValidation.documentStatus === "Expired" || documentValidation.mismatch || documentValidation.bankCrossCheck.consistencyResult === "Inconsistent") {
-    return {
-      status: "Additional Information Required",
-      resolutionPath: "Additional Information Required",
-      recommendation: "Request updated documentation or clarification before proceeding.",
-      nextBestAction: "Send request for updated salary certificate and bank statement clarification.",
+      recommendation: "Policy conflict and not eligible under current rules; no humanitarian exception detected.",
+      nextBestAction: "Review rejection recommendation.",
       proposedMonthlyDeduction: null,
       proposedDurationMonths: null,
       confidenceScore,
       humanReviewRequired: false,
-      explanation: "The system cannot proceed with this request. The submitted salary certificate is expired, the stated income does not match the certificate amount, and the bank transfer average is inconsistent with the declared salary. Updated documents are required to proceed.",
+      explanation: "Policy conflict and not eligible under current rules; no humanitarian exception detected.",
       priority: "Medium",
-      priorityReason: "Waiting for updated salary certificate and bank statement clarification."
+      priorityReason: "Policy conflict and not eligible under current rules; no humanitarian exception detected."
     };
   }
 
-  // CASE-C: Humanitarian Review (Active request + stress + circumstance)
-  if (caseData.activeRequest || (financialAnalysis.obligationsRatio > 0.6 && financialAnalysis.incomePerFamilyMember < 3000)) {
+  // 5. CASE-C / Humanitarian Review (with proof)
+  if (caseData.activeRequest || (financialAnalysis.obligationsRatio > 0.6 && financialAnalysis.incomePerFamilyMember < 3000) || hasHumanitarian) {
     return {
-      status: "Human Review Required",
+      status: "Humanitarian Review Required",
       resolutionPath: "Human Review Required",
       recommendation: "Policy conflict detected. Human officer review is required before a final decision.",
       nextBestAction: "Assign to specialized case officer for manual assessment.",
@@ -296,7 +469,7 @@ export function generateRecommendation(
 
   // CASE-A: Clean approval
   return {
-    status: "Approved",
+    status: "Recommended for Approval / Ready for Officer Confirmation",
     resolutionPath: "Fast Track Approval",
     recommendation: "Approve rescheduling based on calculated repayment capacity.",
     nextBestAction: "Proceed with fast-track rescheduling plan and notify beneficiary.",
@@ -314,22 +487,66 @@ export function generateBeneficiaryMessage(
   caseData: CaseData,
   status: RecommendationResult["status"]
 ) {
-  if (status === "Approved") {
+  const docVal = validateDocuments(caseData);
+  const hasDocIssues = checkHasBlockingDocumentIssues(caseData, docVal);
+  
+  const circumstanceLower = (caseData.supportingCircumstance || "").toLowerCase();
+  const hasHumanitarian = 
+    caseData.monthlyIncome === 0 ||
+    (caseData.supportingCircumstance && caseData.supportingCircumstance !== "None" && circumstanceLower !== "none") ||
+    caseData.hasMedicalDocument === true;
+  const hasHumanitarianProof = !!caseData.supportingEvidenceFile || 
+    caseData.caseId === "CASE-C" || caseData.caseId === "CASE-E";
+  const isHumanitarianWithoutProof = hasHumanitarian && !hasHumanitarianProof;
+
+  // Custom document issue behavior / message
+  if (hasDocIssues && !caseData.caseId.startsWith("CASE-")) {
+    return {
+      en: "This request cannot proceed until the beneficiary corrects the document issues.",
+      ar: "لا يمكن متابعة الطلب حتى يقوم المستفيد بتصحيح مشاكل المستند."
+    };
+  }
+
+  // Humanitarian exception selected but no proof uploaded
+  if (isHumanitarianWithoutProof && !caseData.caseId.startsWith("CASE-")) {
+    return {
+      en: "Please upload supporting evidence for the selected hardship reason before the case can be reviewed.",
+      ar: "يرجى رفع مستند داعم للظرف المحدد قبل تحويل الحالة للمراجعة."
+    };
+  }
+
+  if (status === "Approved" || (status as any) === "Recommended for Approval / Ready for Officer Confirmation" || status === "Recommended for Approval / Ready for Officer Confirmation") {
     return {
       en: `Dear ${caseData.beneficiaryName}, we are pleased to inform you that your housing loan arrears rescheduling request has received preliminary approval. Your updated payment schedule will be issued to you shortly through the official MOEI channels.`,
       ar: `عزيزي المتعامل ${caseData.beneficiaryName}، تمت الموافقة المبدئية على طلب إعادة جدولة متأخرات القرض السكني، وسيتم إشعاركم بجدول السداد المحدّث قريباً.`,
     };
   }
-  if (status === "Additional Information Required") {
+  if (status === "Additional Information Required" || (status as any) === "Applicant Action Required") {
+    const isExpired = docVal.documentStatus === "Expired" || caseData.salaryCertificateExpired;
+    const isMismatch = docVal.mismatch;
+    const isInconsistent = docVal.bankCrossCheck.consistencyResult === "Inconsistent";
+
+    if (isExpired && isMismatch && isInconsistent) {
+      return {
+        en: `Dear ${caseData.beneficiaryName}, please upload a recent salary certificate issued within the last 30 days. The extracted salary does not match your declared income, and the bank transfer average is inconsistent with the salary certificate.`,
+        ar: `عزيزي المتعامل ${caseData.beneficiaryName}، يرجى رفع شهادة راتب حديثة صادرة خلال آخر 30 يومًا. الراتب المستخرج لا يتطابق مع الدخل المصرح به، كما أن متوسط التحويل البنكي غير متسق مع شهادة الراتب.`,
+      };
+    }
     return {
       en: `Dear ${caseData.beneficiaryName}, to continue reviewing your housing loan arrears rescheduling request, please upload a current and valid salary certificate. Kindly also clarify the discrepancy in the income figures between your application, the submitted certificate, and your bank statement transfers.`,
       ar: `عزيزي المتعامل ${caseData.beneficiaryName}، لاستكمال مراجعة طلبكم، يرجى رفع شهادة راتب حديثة وتوضيح اختلاف بيانات الدخل بين الطلب والمستند المرفق وكشف الحساب البنكي.`,
     };
   }
-  if (status === "Human Review Required") {
+  if (status === "Human Review Required" || (status as any) === "Humanitarian Review Required") {
     return {
       en: `Dear ${caseData.beneficiaryName}, your rescheduling request has been referred for specialist human review due to a detected policy conflict. Our case officers will contact you once the review has been completed. We appreciate your patience.`,
       ar: `عزيزي المتعامل ${caseData.beneficiaryName}، تم تحويل طلبكم للمراجعة البشرية بسبب وجود طلب نشط وارتفاع الالتزامات المالية. سيتم التواصل معكم بعد مراجعة المختص.`,
+    };
+  }
+  if (status === "Rejection Recommendation / Not Eligible" || (status as any) === "Rejection Recommendation / Not Eligible" || (status as any) === "Rejected" || status === "Direct Beneficiary Outcome / Not Eligible") {
+    return {
+      en: `Dear ${caseData.beneficiaryName}, we are unable to approve your request due to policy conflicts and ineligibility under current rules. No humanitarian exception was detected.`,
+      ar: `عزيزي المتعامل ${caseData.beneficiaryName}، تعذر قبول طلبكم بسبب تعارض السياسات وعدم الأهلية بموجب الشروط الحالية، مع عدم توفر استثناء إنساني.`,
     };
   }
   return {
@@ -396,7 +613,24 @@ export function runDecisionAgent(caseData: CaseData): DecisionReportPackage {
     result: hasPolicyConflict ? "Warning" : "Success",
   });
 
+  // Invoke the orchestrated agent chain
+  const agentChain = buildAgentChain(caseData, null, documentValidation, null);
+
   const recommendation = generateRecommendation(caseData, policyRules, financialCapacity, documentValidation);
+
+  // Sync recommendation fields directly with the orchestrated agent chain result
+  recommendation.status = agentChain.finalStatus as any;
+  recommendation.resolutionPath = agentChain.resolutionPath as any;
+  recommendation.recommendation = agentChain.recommendationText;
+  recommendation.nextBestAction = agentChain.nextBestAction;
+  recommendation.priority = agentChain.caseClassification.casePriority;
+  recommendation.priorityReason = agentChain.caseClassification.categoryReason;
+  
+  if (recommendation.status === "Humanitarian Review Required") {
+    recommendation.humanReviewRequired = true;
+  } else if (recommendation.status === "Applicant Action Required" || recommendation.status === "Recommended for Approval / Ready for Officer Confirmation" || recommendation.status === "Rejection Recommendation / Not Eligible") {
+    recommendation.humanReviewRequired = false;
+  }
 
   if (recommendation.humanReviewRequired) {
     auditTrail.push({
@@ -407,19 +641,19 @@ export function runDecisionAgent(caseData: CaseData): DecisionReportPackage {
     });
   }
 
-  if (recommendation.status === "Approved") {
+  if (recommendation.status === "Recommended for Approval / Ready for Officer Confirmation" || (recommendation.status as any) === "Approved") {
     policyRules.reasonCodes.push("RC-16", "RC-01");
-  } else if (recommendation.status === "Additional Information Required") {
+  } else if (recommendation.status === "Applicant Action Required" || (recommendation.status as any) === "Additional Information Required") {
     policyRules.reasonCodes.push("RC-10");
-  } else if (recommendation.status === "Human Review Required") {
+  } else if (recommendation.status === "Humanitarian Review Required" || (recommendation.status as any) === "Human Review Required") {
     policyRules.reasonCodes.push("RC-09");
     if (caseData.supportingCircumstance?.includes("Unemployment")) {
       policyRules.reasonCodes.push("UNEMPLOYMENT_PROOF", "NO_STABLE_INCOME", "HUMANITARIAN_REVIEW", "MAINTAIN_CURRENT_INSTALLMENT");
     } else if (caseData.supportingCircumstance) {
       policyRules.reasonCodes.push("HUMANITARIAN_REVIEW", "AUTO_DECISION_BLOCKED", "HIGH_OBLIGATION_RATIO", "LOW_INCOME_PER_FAMILY_MEMBER");
     }
-  } else if (recommendation.status === "Rejected") {
-    policyRules.reasonCodes.push("ACTIVE_REQUEST_FOUND", "DUPLICATE_APPLICATION", "AUTO_REJECTION_ELIGIBLE");
+  } else if (recommendation.status === "Rejection Recommendation / Not Eligible" || (recommendation.status as any) === "Rejected") {
+    policyRules.reasonCodes.push("POLICY_CONFLICT", "NOT_ELIGIBLE_CURRENT_RULES", "AUTO_REJECTION_ELIGIBLE");
   }
 
   if (caseData.supportingCircumstance) {
@@ -477,5 +711,7 @@ export function runDecisionAgent(caseData: CaseData): DecisionReportPackage {
     reasonCodes: uniqueReasonCodes,
     beneficiaryMessages,
     auditTrail,
+    caseClassification: agentChain.caseClassification,
+    agentSteps: agentChain.agentSteps,
   };
 }

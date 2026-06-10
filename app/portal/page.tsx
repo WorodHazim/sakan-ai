@@ -17,8 +17,10 @@ import {
   FileWarning,
   UserCheck,
   Info,
+  Loader2,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 
 // ── Currency helper ─────────────────────────────────────────────────────────
 function aed(value: number) {
@@ -65,6 +67,24 @@ const CASE_CONFIGS: Record<string, CaseConfig> = {
       { icon: "check", labelKey: "loanDataRetrieved",   subKey: "moeiSystems" },
       { icon: "cross", labelKey: "activeRequestFound",  subKey: "requestPending" },
       { icon: "warn",  labelKey: "fastTrackUnavailable", subKey: "overrideRequired" },
+      { icon: "warn",  labelKey: "humanReviewRequired", subKey: "exceptionalRouting" },
+    ],
+    ctaLabelKey: "requestHumanReview",
+    ctaHref: "/apply",
+  },
+  "CASE-D": {
+    readinessItems: [
+      { icon: "check", labelKey: "identityVerified",    subKey: "viaUaePass" },
+      { icon: "check", labelKey: "loanDataRetrieved",   subKey: "moeiSystems" },
+      { icon: "cross", labelKey: "activeRequestFound",  subKey: "requestPending" },
+    ],
+    ctaLabelKey: "requestHumanReview",
+    ctaHref: "/apply",
+  },
+  "CASE-E": {
+    readinessItems: [
+      { icon: "check", labelKey: "identityVerified",    subKey: "viaUaePass" },
+      { icon: "check", labelKey: "loanDataRetrieved",   subKey: "moeiSystems" },
       { icon: "warn",  labelKey: "humanReviewRequired", subKey: "exceptionalRouting" },
     ],
     ctaLabelKey: "requestHumanReview",
@@ -177,6 +197,16 @@ const EXPLANATION: Record<string, { en: string; ar: string; variant: "green" | "
     ar: "يتطلب طلبكم مراجعة مختص بسبب وجود طلب نشط وارتفاع الالتزامات المالية. سيتم تحويل الحالة إلى موظف مختص للمراجعة.",
     variant: "blue",
   },
+  "CASE-D": {
+    en: "Your request was not approved because SAKAN AI detected you already have an active rescheduling request in progress.",
+    ar: "تعذر قبول طلبكم بسبب رصد طلب نشط لإعادة الجدولة قيد الإجراء حالياً.",
+    variant: "amber",
+  },
+  "CASE-E": {
+    en: "Unemployment or income loss has been detected. Your case is referred for urgent humanitarian financial stress review to defer arrears.",
+    ar: "تم رصد حالة إنهاء خدمة أو فقدان للدخل. تم تحويل طلبكم بشكل عاجل للمراجعة الإنسانية بهدف ترحيل المتأخرات.",
+    variant: "blue",
+  },
 };
 
 // ── Readiness icon helper ─────────────────────────────────────────────────────
@@ -203,14 +233,63 @@ function translatePaymentHistory(raw: string, lang: LangKey) {
 }
 
 // ── Page component ────────────────────────────────────────────────────────────
+const fallbackExplanation = {
+  en: "SAKAN AI will review your submitted information, validate the required documents, apply policy rules, and provide an explainable recommendation.",
+  ar: "سيقوم سكن AI بمراجعة بيانات الطلب، والتحقق من المستندات المطلوبة، وتطبيق قواعد السياسة، ثم تقديم توصية قابلة للتفسير.",
+  variant: "blue" as const,
+};
+
+const fallbackConfig: CaseConfig = {
+  readinessItems: [
+    { icon: "check",   labelKey: "identityVerified",    subKey: "viaUaePass" },
+    { icon: "check",   labelKey: "loanDataRetrieved",   subKey: "moeiSystems" },
+    { icon: "pending", labelKey: "salaryCertRequired",  subKey: "nextStep" },
+  ],
+  ctaLabelKey: "startRequest",
+  ctaHref: "/apply",
+};
+
+const defaultCaseData = {
+  beneficiaryName: "Beneficiary",
+  beneficiaryId: "BEN-000",
+  monthlyIncome: 0,
+  familyMembers: 1,
+  financialObligations: 0,
+  activeRequest: false,
+  loanId: "LOAN-000",
+  originalLoanAmount: 0,
+  remainingLoanBalance: 0,
+  remainingRepaymentMonths: 0,
+  arrearsAmount: 0,
+  unpaidInstallments: 0,
+  currentInstallment: 0,
+  paymentHistory: "Regular",
+};
+
 export default function BeneficiaryPortal() {
   const { selectedCaseId, language, setLanguage } = useDemo();
-  const caseData = MOCK_CASES[selectedCaseId];
+  const caseData = MOCK_CASES[selectedCaseId] || defaultCaseData;
   const lang = language as LangKey;
   const t = T[lang];
   const isAr = lang === "AR";
-  const config = CASE_CONFIGS[selectedCaseId];
+  const config = CASE_CONFIGS[selectedCaseId] || fallbackConfig;
   const explanation = EXPLANATION[selectedCaseId];
+  const safeExplanation = explanation ?? fallbackExplanation;
+
+  // Hydration‑safe mounting flag
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  // While mounting, render a neutral skeleton that matches server output
+  if (!hasMounted) {
+    return (
+      <div className="min-h-screen bg-sakan-bg flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-sakan-gold" />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -231,13 +310,12 @@ export default function BeneficiaryPortal() {
       )}
 
       <div className="max-w-5xl mx-auto space-y-8">
-
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-sakan-navy">{t.portalTitle}</h1>
             <p className="text-sakan-text/70 mt-1 text-sm">
-              {t.welcome}،&nbsp;<span className="font-semibold text-sakan-navy">{caseData.beneficiaryName}</span>
+              {t.welcome}، <span className="font-semibold text-sakan-navy">{caseData.beneficiaryName}</span>
             </p>
           </div>
 
@@ -299,8 +377,12 @@ export default function BeneficiaryPortal() {
             >
               <ExplanationCard
                 title={t.whatThisMeans}
-                text={isAr ? explanation.ar : explanation.en}
-                variant={explanation.variant}
+                text={
+                  isAr
+                    ? safeExplanation.ar || fallbackExplanation.ar
+                    : safeExplanation.en || fallbackExplanation.en
+                }
+                variant={safeExplanation.variant}
                 isAr={isAr}
               />
             </motion.div>
@@ -324,7 +406,7 @@ export default function BeneficiaryPortal() {
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-y-7 gap-x-6">
                 <LoanStat icon={<Wallet className="w-3 h-3" />} label={t.originalAmount}    value={aed(caseData.originalLoanAmount)} />
-                <LoanStat                                        label={t.remainingBalance}  value={aed(caseData.remainingLoanBalance)} />
+                <LoanStat label={t.remainingBalance}  value={aed(caseData.remainingLoanBalance)} />
                 <LoanStat icon={<Calendar className="w-3 h-3" />} label={t.remainingTerm}   value={`${caseData.remainingRepaymentMonths} ${t.months}`} />
 
                 {/* Arrears highlight cells */}
@@ -351,7 +433,6 @@ export default function BeneficiaryPortal() {
                 </span>
               </div>
             </motion.div>
-
           </div>
 
           {/* Right sidebar: Readiness card */}
@@ -372,12 +453,10 @@ export default function BeneficiaryPortal() {
                   <li key={i} className="flex items-start gap-3">
                     <ReadinessIcon type={item.icon} />
                     <div>
-                      <div className={`font-bold text-sm ${item.icon === "warn" || item.icon === "cross" ? "text-amber-300" : "text-white"}`}>
-                        {t[item.labelKey as keyof typeof t]}
-                      </div>
-                      <div className="text-xs text-white/55 mt-0.5 leading-snug">
-                        {t[item.subKey as keyof typeof t]}
-                      </div>
+                      <div className={`font-bold text-sm ${item.icon === "warn" || item.icon === "cross" ? "text-amber-300" : "text-white"}`}
+                        >{t[item.labelKey as keyof typeof t]}</div>
+                      <div className="text-xs text-white/55 mt-0.5 leading-snug"
+                        >{t[item.subKey as keyof typeof t]}</div>
                     </div>
                   </li>
                 ))}
@@ -436,19 +515,19 @@ function ExplanationCard({
   const styles = {
     green: {
       wrapper: "bg-emerald-50 border-emerald-200",
-      icon: <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />,
+      icon: <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />, 
       title: "text-emerald-800",
       text: "text-emerald-900",
     },
     amber: {
       wrapper: "bg-amber-50 border-amber-200",
-      icon: <FileWarning className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />,
+      icon: <FileWarning className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />, 
       title: "text-amber-800",
       text: "text-amber-900",
     },
     blue: {
       wrapper: "bg-blue-50 border-blue-200",
-      icon: <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />,
+      icon: <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />, 
       title: "text-blue-800",
       text: "text-blue-900",
     },

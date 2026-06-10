@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useDemo } from "@/lib/demo-context";
+import { runDecisionAgent } from "@/lib/agent-rules";
+import { MOCK_CASES } from "@/lib/mock-data";
+
 import {
   CheckCircle2,
   Loader2,
@@ -156,6 +159,22 @@ export default function AIProcessingScreen() {
     Array(totalSteps).fill({ status: "pending", time: "" })
   );
   const [isComplete, setIsComplete] = useState(false);
+  const [report, setReport] = useState<any>(null);
+
+  useEffect(() => {
+    let caseData = MOCK_CASES[selectedCaseId];
+    if (!caseData && typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(`customCase_${selectedCaseId}`);
+        if (stored) caseData = JSON.parse(stored);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    if (caseData) {
+      setReport(runDecisionAgent(caseData));
+    }
+  }, [selectedCaseId]);
 
   useEffect(() => {
     let index = 0;
@@ -216,9 +235,58 @@ export default function AIProcessingScreen() {
 
   const percentage = Math.min(Math.round(((currentIndex) / totalSteps) * 100), 100);
 
-  // Derive final attributes
-  const finalBadge = selectedCaseId === "CASE-A" ? t.finalBadges.CASE_A : selectedCaseId === "CASE-B" ? t.finalBadges.CASE_B : t.finalBadges.CASE_C;
-  const buttonText = selectedCaseId === "CASE-A" ? t.buttons.CASE_A : selectedCaseId === "CASE-B" ? t.buttons.CASE_B : t.buttons.CASE_C;
+  const finalStatus = report?.recommendation?.status as string;
+  const isRejected = 
+    finalStatus === "Direct Beneficiary Outcome / Not Eligible" ||
+    finalStatus === "Direct Beneficiary Outcome" ||
+    finalStatus === "Rejection Recommendation / Not Eligible" ||
+    finalStatus === "Rejection Recommendation / Not Eligible" ||
+    finalStatus === "Rejected" ||
+    finalStatus === "Not Eligible Under Current Rules" ||
+    selectedCaseId === "CASE-D";
+
+  const isApplicantAction = 
+    finalStatus === "Applicant Action Required" ||
+    selectedCaseId === "CASE-B";
+
+  const redirectLink = isRejected 
+    ? `/apply/result?caseId=${selectedCaseId}`
+    : isApplicantAction
+    ? `/apply?caseId=${selectedCaseId}`
+    : `/officer/report/${selectedCaseId}`;
+
+  let finalBadge = "";
+  let buttonText = "";
+
+  if (isAr) {
+    if (isRejected) {
+      finalBadge = "نتيجة الطلب: غير مؤهل حسب القواعد الحالية";
+      buttonText = "عرض نتيجة الطلب";
+    } else if (finalStatus === "Applicant Action Required") {
+      finalBadge = "مطلب مستندات إضافية / تصحيح المستندات";
+      buttonText = "عرض تقرير المراجعة";
+    } else if (finalStatus === "Humanitarian Review Required") {
+      finalBadge = "مطلب مراجعة إنسانية / محوّل للمراجعة";
+      buttonText = "عرض تقرير التحويل";
+    } else {
+      finalBadge = "موصى بالموافقة / المسار السريع";
+      buttonText = "عرض تقرير القرار";
+    }
+  } else {
+    if (isRejected) {
+      finalBadge = "Application Outcome: Not Eligible Under Current Rules";
+      buttonText = "View Application Outcome";
+    } else if (finalStatus === "Applicant Action Required") {
+      finalBadge = "Additional Information Required / Document Correction Required";
+      buttonText = "View Review Report";
+    } else if (finalStatus === "Humanitarian Review Required") {
+      finalBadge = "Humanitarian Review Required / Escalated";
+      buttonText = "View Escalation Report";
+    } else {
+      finalBadge = "Recommended for Approval / Ready for Officer Confirmation";
+      buttonText = "View Decision Report";
+    }
+  }
 
   return (
     <div 
@@ -396,7 +464,6 @@ export default function AIProcessingScreen() {
               </div>
             </div>
 
-            {/* Footer Status & Button */}
             <div className="p-6 bg-white border-t border-sakan-border">
               <AnimatePresence mode="wait">
                 {isComplete ? (
@@ -404,19 +471,19 @@ export default function AIProcessingScreen() {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     className={`mb-4 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold text-center ${
-                      selectedCaseId === "CASE-A" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                      selectedCaseId === "CASE-B" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                      finalStatus === "Recommended for Approval / Ready for Officer Confirmation" || finalStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                      finalStatus === "Applicant Action Required" ? "bg-amber-50 text-amber-700 border-amber-200" :
                       "bg-red-50 text-red-700 border-red-200"
                     }`}
                   >
-                    {selectedCaseId === "CASE-A" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                    {finalStatus === "Recommended for Approval / Ready for Officer Confirmation" || finalStatus === "Approved" ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
                     {finalBadge}
                   </motion.div>
                 ) : null}
               </AnimatePresence>
               
               <Link
-                href={`/officer/report/${selectedCaseId}`}
+                href={redirectLink}
                 className={`w-full flex items-center justify-center gap-2 font-bold py-3.5 px-4 rounded-xl transition-all shadow-md text-sm ${
                   isComplete 
                     ? "bg-sakan-navy hover:bg-sakan-navy/90 text-white" 

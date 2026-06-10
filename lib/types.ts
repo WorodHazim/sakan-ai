@@ -21,12 +21,32 @@ export type CaseData = {
   hasCompanyLetterhead: boolean;
   hasAuthorizedSignature: boolean;
   employeeDetailsMatch: boolean;
+  hasStamp?: boolean;
   averageSalaryTransfer6Months: number;
   hasMedicalDocument: boolean;
   medicalProviderRecognized?: boolean;
   medicalQRVerified?: boolean;
   medicalDateValid?: boolean;
   supportingCircumstance?: string;
+  ocrMode?: string;
+  ocrWarnings?: string[];
+  bankProofFile?: string;
+  supportingEvidenceFile?: string;
+  selectedMonthlyArrearsDeduction?: number;
+  selectedDurationMonths?: number;
+  newTotalInstallment?: number;
+  deductionRatio?: number;
+  planComplianceStatus?: string;
+  identityVerified?: boolean;
+  identitySource?: string;
+  uaePassProfile?: {
+    fullName?: string;
+    emiratesId?: string;
+    nationality?: string;
+    mobile?: string;
+    email?: string;
+    uuid?: string;
+  };
 };
 
 export type DocumentValidationResult = {
@@ -37,6 +57,7 @@ export type DocumentValidationResult = {
     hasCompanyLetterhead: boolean;
     hasAuthorizedSignature: boolean;
     employeeDetailsMatch: boolean;
+    hasStamp?: boolean;
     dateValid: boolean;
   };
   bankCrossCheck: {
@@ -51,6 +72,9 @@ export type DocumentValidationResult = {
   };
   reasonCodes: string[];
   warnings: string[];
+  ocrNeedsReview?: boolean;
+  ocrConfidenceLow?: boolean;
+  ocrMode?: string;
 };
 
 export type FinancialCapacityResult = {
@@ -74,7 +98,7 @@ export type PolicyRulesResult = {
 };
 
 export type RecommendationResult = {
-  status: "Approved" | "Additional Information Required" | "Human Review Required" | "Rejected";
+  status: "Approved" | "Additional Information Required" | "Human Review Required" | "Rejected" | "Applicant Action Required" | "Humanitarian Review Required" | "Direct Beneficiary Outcome / Not Eligible" | "Recommended for Approval / Ready for Officer Confirmation" | "Rejection Recommendation / Not Eligible";
   resolutionPath: "Fast Track Approval" | "Additional Information Required" | "Financial Stress Review" | "Human Review Required" | "Rejected / Not Eligible";
   recommendation: string;
   nextBestAction: string;
@@ -96,6 +120,12 @@ export type DecisionReportPackage = {
   reasonCodes: string[];
   beneficiaryMessages: { en: string; ar: string };
   auditTrail: AuditTrailEvent[];
+  caseClassification?: {
+    caseCategory: string;
+    casePriority: string;
+    categoryReason: string;
+  };
+  agentSteps?: any[];
 };
 
 export type AuditTrailEvent = {
@@ -104,4 +134,10 @@ export type AuditTrailEvent = {
   action: string;
   result: "Success" | "Warning" | "Failed";
   relatedReasonCode?: string;
+  agentName?: string;
+  inputSource?: string;
+  reasonCode?: string;
+  governanceRule?: string;
+  routeImpact?: string;
+  category?: "Document" | "Financial" | "Policy" | "Routing" | "Communication";
 };
