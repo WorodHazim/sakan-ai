@@ -450,7 +450,27 @@ export function generateRecommendation(
     };
   }
 
-  // 5. CASE-C / Humanitarian Review (with proof)
+  // 5a. Clean Humanitarian Review (with proof, no active request, valid plan)
+  const isPlanAllowed = caseData.planComplianceStatus === "Allowed Plan" || (!caseData.planComplianceStatus && financialAnalysis.proposedTotalDeduction <= financialAnalysis.max20PercentDeduction);
+  const isCleanHumanitarian = hasHumanitarian && !caseData.activeRequest && isPlanAllowed && !hasDocIssues;
+
+  if (isCleanHumanitarian) {
+    return {
+      status: "Humanitarian Review Required",
+      resolutionPath: "Human Review Required",
+      recommendation: "A repayment plan was calculated, but final confirmation is paused because the case requires humanitarian officer review.",
+      nextBestAction: "Assign to specialized case officer for manual assessment.",
+      proposedMonthlyDeduction: financialAnalysis.proposedTotalDeduction,
+      proposedDurationMonths: financialAnalysis.proposedDurationMonths,
+      confidenceScore,
+      humanReviewRequired: true,
+      explanation: "This case is not routed for fast-track confirmation because a humanitarian circumstance with supporting evidence was detected. Although document and financial checks passed, the case requires human officer review before a final decision.",
+      priority: "High",
+      priorityReason: "Humanitarian indicators detected, requires officer review despite passing policy checks."
+    };
+  }
+
+  // 5b. CASE-C / Humanitarian Review (with proof and policy conflicts)
   if (caseData.activeRequest || (financialAnalysis.obligationsRatio > 0.6 && financialAnalysis.incomePerFamilyMember < 3000) || hasHumanitarian) {
     return {
       status: "Humanitarian Review Required",

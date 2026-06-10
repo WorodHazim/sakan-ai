@@ -142,6 +142,7 @@ function ApplyResultContent() {
             recommendation: rpt.recommendation,
             reasonCodes: rpt.reasonCodes,
             caseClassification: rpt.caseClassification,
+            fullReport: rpt,
             createdAt: new Date().toISOString(),
             source: "CUSTOM",
           });

@@ -66,7 +66,8 @@ export function checkHasBlockingDocumentIssues(caseData: CaseData, docVal: any):
                               
   // 6. missing required document
   const isMissingDoc = docVal?.documentStatus === "Missing" || 
-                       !caseData.salaryCertificateAmount;
+                       caseData.salaryCertificateAmount === undefined || 
+                       caseData.salaryCertificateAmount === null;
                        
   // 7. OCR confidence low / fallback OCR with low confidence
   const isOcrLowConfidence = docConfidence < 80 || 
@@ -85,7 +86,48 @@ export function checkHasBlockingDocumentIssues(caseData: CaseData, docVal: any):
     }
   }
   
-  return isExpired || isMismatch || isBankInconsistent || isStampMissing || isSignatureMissing || isMissingDoc || isOcrLowConfidence || isNotValidCert || isDocValFailed;
+  // 10. missing company letterhead
+  const isLetterheadMissing = caseData.hasCompanyLetterhead === false || 
+                              docVal?.salaryCertificateChecks?.hasCompanyLetterhead === false;
+
+  // 11. employee details mismatch
+  const isEmployeeMismatch = caseData.employeeDetailsMatch === false || 
+                             docVal?.salaryCertificateChecks?.employeeDetailsMatch === false;
+
+  const specificBlockingIssues = {
+    isExpired,
+    isMismatch,
+    isBankInconsistent,
+    isStampMissing,
+    isSignatureMissing,
+    isMissingDoc,
+    isOcrLowConfidence,
+    isNotValidCert: isNotValidCert === true,
+    isLetterheadMissing,
+    isEmployeeMismatch
+  };
+
+  const hasBlockingDocumentIssues = 
+    isExpired || 
+    isMismatch || 
+    isBankInconsistent || 
+    isStampMissing || 
+    isSignatureMissing || 
+    isMissingDoc || 
+    isOcrLowConfidence || 
+    (isNotValidCert === true) || 
+    isLetterheadMissing || 
+    isEmployeeMismatch;
+
+  if (typeof window !== "undefined") {
+    console.log("BLOCKING DOCUMENT ISSUE DETAILS", {
+      isDocValFailed,
+      specificBlockingIssues,
+      hasBlockingDocumentIssues
+    });
+  }
+
+  return hasBlockingDocumentIssues;
 }
 
 /**
@@ -120,9 +162,9 @@ export function buildAgentChain(
 
   // Use document intelligence outputs (ocrResult) if passed, or calculate baseline validation
   const docVal = ocrResult || {
-    documentStatus: caseData.salaryCertificateExpired ? "Expired" : caseData.salaryCertificateAmount ? "Valid" : "Missing",
+    documentStatus: caseData.salaryCertificateExpired ? "Expired" : (caseData.salaryCertificateAmount !== undefined && caseData.salaryCertificateAmount !== null) ? "Valid" : "Missing",
     extractedSalary: safeNumber(caseData.salaryCertificateAmount),
-    mismatch: caseData.salaryCertificateAmount ? monthlyIncome !== safeNumber(caseData.salaryCertificateAmount) : false,
+    mismatch: (caseData.salaryCertificateAmount !== undefined && caseData.salaryCertificateAmount !== null) ? monthlyIncome !== safeNumber(caseData.salaryCertificateAmount) : false,
     salaryCertificateChecks: {
       hasCompanyLetterhead: !!caseData.hasCompanyLetterhead,
       hasAuthorizedSignature: !!caseData.hasAuthorizedSignature,
@@ -133,8 +175,9 @@ export function buildAgentChain(
     bankCrossCheck: {
       averageTransfer: safeNumber(caseData.averageSalaryTransfer6Months),
       consistencyResult:
-        caseData.averageSalaryTransfer6Months && caseData.salaryCertificateAmount &&
-        Math.abs(safeNumber(caseData.salaryCertificateAmount) - safeNumber(caseData.averageSalaryTransfer6Months)) / safeNumber(caseData.salaryCertificateAmount) <= 0.05
+        (caseData.averageSalaryTransfer6Months !== undefined && caseData.averageSalaryTransfer6Months !== null) && 
+        (caseData.salaryCertificateAmount !== undefined && caseData.salaryCertificateAmount !== null) &&
+        (safeNumber(caseData.salaryCertificateAmount) > 0 ? (Math.abs(safeNumber(caseData.salaryCertificateAmount) - safeNumber(caseData.averageSalaryTransfer6Months)) / safeNumber(caseData.salaryCertificateAmount) <= 0.05) : (safeNumber(caseData.averageSalaryTransfer6Months) === 0))
           ? "Consistent"
           : "Inconsistent",
       confidenceScore: 90,
@@ -376,6 +419,15 @@ export function buildAgentChain(
     resolutionPath = "Fast Track Approval";
     recommendationText = "Approve rescheduling based on calculated repayment capacity.";
     nextBestAction = "Proceed with fast-track rescheduling plan and notify beneficiary.";
+  }
+
+  // Development-only console logs requested by user
+  if (typeof window !== "undefined" && !caseData.caseId.startsWith("CASE-")) {
+    console.log("[Routing Debug] Humanitarian selected:", hasHumanitarianOrException);
+    console.log("[Routing Debug] Supporting evidence uploaded:", hasHumanitarianProof);
+    console.log("[Routing Debug] Blocking document issues:", hasBlockingDocumentIssues ? "Yes" : "No");
+    console.log("[Routing Debug] Final routing decision:", finalStatus);
+    console.log("[Routing Debug] Processing route target:", resolutionPath);
   }
 
   const classificationAgent: AgentExecutionStep = {
@@ -782,6 +834,18 @@ export function buildAgentChain(
       recommendationText,
       nextBestAction,
     };
+  }
+
+  if (typeof window !== "undefined") {
+    console.log("PROCESSING CASE DATA", {
+      caseId: caseData.caseId,
+      supportingCircumstance: caseData.supportingCircumstance,
+      supportingEvidenceUploaded: hasHumanitarianProof,
+      hasBlockingDocumentIssues,
+      documentWarnings: docVal?.warnings,
+      finalRoute: finalStatus,
+      recommendation: resolutionPath
+    });
   }
 
   return {

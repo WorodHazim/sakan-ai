@@ -19,6 +19,7 @@ import {
   mergeWithOfficerLogs,
 } from "@/lib/governanceAudit";
 import { useDemo } from "@/lib/demo-context";
+import { getWorkspaceCases } from "@/lib/workspace-storage";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   ArrowLeft,
@@ -531,13 +532,14 @@ export default function DecisionReportPage({
 
   // Client-side custom case restoration state
   const [restoredCaseData, setRestoredCaseData] = useState<any>(null);
+  const [restoredReportData, setRestoredReportData] = useState<any>(null);
   const [restoreAttempted, setRestoreAttempted] = useState(false);
 
   const [ocrData, setOcrData] = useState<any>(null);
 
   // Attempt to restore CUSTOM case data on mount
   useEffect(() => {
-    const isCustom = caseId.startsWith("CUSTOM");
+    const isCustom = caseId.startsWith("CUSTOM") || caseId.startsWith("UAE-PASS-TEST");
 
     if (!isCustom) {
       setRestoreAttempted(true);
@@ -563,6 +565,28 @@ export default function DecisionReportPage({
       setRestoredCaseData(MOCK_CASES[caseId]);
       finish();
       return;
+    }
+
+    // 0. Try sakan_workspace_cases first
+    if (typeof window !== "undefined") {
+      const workspaceCases = getWorkspaceCases();
+      const wsCase = workspaceCases.find(c => c.caseData.caseId === caseId);
+      if (wsCase) {
+        console.log("report: loading custom case from localStorage");
+        console.log("report: custom case found");
+        setRestoredCaseData(wsCase.caseData);
+        if (wsCase.fullReport) {
+          setRestoredReportData(wsCase.fullReport);
+        }
+        finish();
+        return;
+      } else {
+        console.log("report: custom case missing, showing safe missing state");
+        // User instruction: If the custom case data does NOT exist, do NOT show a fake fallback.
+        // We will just finish without setting anything, which triggers the safe "not found" state.
+        finish();
+        return;
+      }
     }
 
     // 1. Try localStorage
@@ -686,9 +710,15 @@ export default function DecisionReportPage({
   // Resolve case data: MOCK_CASES for fixed cases, restored data for custom
   const caseData = MOCK_CASES[caseId] || restoredCaseData;
 
+  const memoizedReport = React.useMemo(() => {
+    if (!caseData) return null;
+    if (restoredReportData) return restoredReportData;
+    return runDecisionAgent(caseData);
+  }, [caseData, restoredReportData]);
+
   useEffect(() => {
-    if (caseData) {
-      const report = runDecisionAgent(caseData);
+    if (caseData && memoizedReport) {
+      const report = memoizedReport;
       const status = report.recommendation.status as string;
       const isRejected = 
         status === "Direct Beneficiary Outcome / Not Eligible" ||
@@ -709,7 +739,7 @@ export default function DecisionReportPage({
         router.replace(`/apply?caseId=${caseId}`);
       }
     }
-  }, [caseData, caseId, router]);
+  }, [caseData, memoizedReport, caseId, router]);
 
   useEffect(() => {
     // Load OCR data
@@ -885,8 +915,8 @@ export default function DecisionReportPage({
   const currentCaseData = sandboxMode && sandboxReport ? sandboxReport.caseData : effectiveCaseData;
   const report = React.useMemo(() => {
     if (!effectiveCaseData) return null;
-    return sandboxMode && sandboxReport ? sandboxReport : runDecisionAgent(effectiveCaseData);
-  }, [effectiveCaseData, sandboxMode, sandboxReport]);
+    return sandboxMode && sandboxReport ? sandboxReport : memoizedReport;
+  }, [effectiveCaseData, sandboxMode, sandboxReport, memoizedReport]);
 
   useEffect(() => {
     if (!report) return;

@@ -11,6 +11,7 @@ export type WorkspaceCase = {
     casePriority: string;
     categoryReason: string;
   };
+  fullReport?: any;
   createdAt: string;
   source: "CUSTOM";
 };

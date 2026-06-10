@@ -358,6 +358,15 @@ export function CustomCaseSimulatorModal({ isOpen, onClose, onCaseGenerated }: C
         uaePassProfile: isUaePass ? uaePassProfile : undefined,
       };
 
+      // Clear any potential stale state
+      delete (newMockData as any).documentValidation;
+      delete (newMockData as any).warnings;
+      delete (newMockData as any).correctionRequired;
+      delete (newMockData as any).applicantActionRequired;
+      delete (newMockData as any).route;
+      (newMockData as any).ocrWarnings = [];
+
+
       saveCustomCase({
         ...newMockData,
         recommendation: recStatus,

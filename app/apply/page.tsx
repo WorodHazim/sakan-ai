@@ -474,6 +474,16 @@ export default function ApplyPage() {
     setIsIncomeEditable(false);
 
     if (!selectedCaseId.startsWith("CASE-")) {
+      // Clear stale flags
+      const target = MOCK_CASES[selectedCaseId];
+      if (target) {
+        delete (target as any).documentValidation;
+        delete (target as any).warnings;
+        delete (target as any).correctionRequired;
+        delete (target as any).applicantActionRequired;
+        delete (target as any).route;
+      }
+
       // Custom case: find cached OCR
       let foundCached = false;
       if (typeof window !== "undefined") {
