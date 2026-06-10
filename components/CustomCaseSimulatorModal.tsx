@@ -323,10 +323,8 @@ export function CustomCaseSimulatorModal({ isOpen, onClose, onCaseGenerated }: C
         confidence = 95;
       }
 
-      let newCaseId = "CUSTOM-001";
-      if (typeof window !== "undefined" && localStorage.getItem(`customCase_CUSTOM-001`)) {
-        newCaseId = `CUSTOM-${Date.now().toString().slice(-6)}`;
-      }
+      const uniqueSuffix = Math.floor(100000 + Math.random() * 900000).toString();
+      const newCaseId = `CUSTOM-${uniqueSuffix}`;
 
       const newMockData = {
         caseId: newCaseId,

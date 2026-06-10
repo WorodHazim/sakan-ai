@@ -854,16 +854,32 @@ export default function ApplyPage() {
       return;
     }
 
+    let finalCaseId = selectedCaseId;
+    if (["CASE-A", "CASE-B", "CASE-C", "CASE-D", "CASE-E"].includes(selectedCaseId)) {
+      finalCaseId = `CUSTOM-${Math.floor(100000 + Math.random() * 900000).toString()}`;
+      MOCK_CASES[finalCaseId] = {
+        ...MOCK_CASES[selectedCaseId],
+        caseId: finalCaseId
+      } as any;
+      // Important: update the active context so /processing reads the right case
+      if (typeof window !== "undefined") {
+        localStorage.setItem("activeCaseCode", finalCaseId);
+      }
+      // Note: we don't call setSelectedCaseId(finalCaseId) here because it might cause a race condition
+      // with router.push if the React context re-renders the whole tree. The localStorage write 
+      // ensures the next page load gets it.
+    }
+
     // Save slider values to MOCK_CASES
-    MOCK_CASES[selectedCaseId].selectedMonthlyArrearsDeduction = sliderDeduction;
-    MOCK_CASES[selectedCaseId].selectedDurationMonths = sliderDuration;
-    MOCK_CASES[selectedCaseId].newTotalInstallment = sliderNewTotalInstallment;
-    MOCK_CASES[selectedCaseId].deductionRatio = sliderDeductionRatio;
-    MOCK_CASES[selectedCaseId].planComplianceStatus = sliderComplianceStatus;
+    MOCK_CASES[finalCaseId].selectedMonthlyArrearsDeduction = sliderDeduction;
+    MOCK_CASES[finalCaseId].selectedDurationMonths = sliderDuration;
+    MOCK_CASES[finalCaseId].newTotalInstallment = sliderNewTotalInstallment;
+    MOCK_CASES[finalCaseId].deductionRatio = sliderDeductionRatio;
+    MOCK_CASES[finalCaseId].planComplianceStatus = sliderComplianceStatus;
 
     // Also update in localStorage for persistence in processing/report page
     const updatedCaseData = {
-      ...MOCK_CASES[selectedCaseId],
+      ...MOCK_CASES[finalCaseId],
       selectedMonthlyArrearsDeduction: sliderDeduction,
       selectedDurationMonths: sliderDuration,
       newTotalInstallment: sliderNewTotalInstallment,
@@ -871,7 +887,7 @@ export default function ApplyPage() {
       planComplianceStatus: sliderComplianceStatus
     };
     try {
-      localStorage.setItem(`customCase_${selectedCaseId}`, JSON.stringify(updatedCaseData));
+      localStorage.setItem(`customCase_${finalCaseId}`, JSON.stringify(updatedCaseData));
     } catch (e) {
       console.warn(e);
     }

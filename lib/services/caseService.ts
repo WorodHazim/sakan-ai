@@ -231,7 +231,7 @@ export async function getCaseByCode(caseCode: string): Promise<SakanCase | null>
 
 // 4. Save Custom Case
 export async function saveCustomCase(caseData: any): Promise<boolean> {
-  const caseId = caseData.caseId || caseData.caseCode || "CUSTOM-001";
+  const caseId = caseData.caseId || caseData.caseCode || ("CUSTOM-" + Math.floor(100000 + Math.random() * 900000).toString());
   
   // Save to localStorage immediately
   if (typeof window !== "undefined") {
